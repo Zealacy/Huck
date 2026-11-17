@@ -1363,7 +1363,7 @@ function drawBadges(){
   for(const e of G.off){
     if(e.idx===G.holder)continue;
     const X=sx(e.x);if(X<-20||X>W+20)continue;
-    const o=openCached(e),lift=e.isMe?12:starsOf(e.p.base||e.p)>=4?6:0;
+    const o=openCached(e),lift=e.isMe?18:starsOf(e.p.base||e.p)>=4?6:0;
     items.push({e,X,head:sy(e.y)-13*P-lift,o,pct:catchPct(o)});
   }
   items.sort((a,b)=>a.X-b.X);
