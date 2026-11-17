@@ -367,7 +367,7 @@ function newMatch(o){
     wind:{mph,x:Math.cos(wa)*mph/10,y:Math.sin(wa)*mph/10*.7,ang:wa},
     score:[0,0],target:o.target||7,halfDone:false,firstReceiver:Math.random()<.5?0:1,nextReceiver:0,
     phase:'idle',t:0,camX:10,off:[],def:[],holder:-1,disc:{x:30,y:20,z:1.1},flight:null,anchor:{x:30,y:20},
-    stats:{},banner:null,settle:0,stallT:0,fake:0,fakeCd:0,cutTimer:.6,os:1,markAng:0,markerSet:false,resetCut:false,
+    stats:{},banner:null,settle:0,stallT:0,fake:0,fakeCd:0,os:1,markAng:0,markerSet:false,resetCut:false,
     readyT:0,deadT:0,after:null,paused:false,timers:[],demoTimer:1,onEnd:o.onEnd,meId:o.meId||null,label:o.label||'',
     rainDrops:Array.from({length:110},()=>({x:Math.random()*W,y:Math.random()*H,s:rand(320,480)})),
     crowd:Array.from({length:60},(_,i)=>({x:34.6+i*.72+Math.random()*.3,row:i%3,c:Math.random(),ph:Math.random()*6}))};
@@ -443,12 +443,23 @@ function computeForce(){
   G.os=Math.abs(y-20)<6?(Math.random()<.5?1:-1):(y<20?-1:1);
   G.markAng=Math.atan2(-G.os,.35);
 }
+// Two handlers stay back (dump and swing). Everyone else lines up in a vertical stack, keeping
+// their place in line: G.stack runs front to back, and a cutter who finishes rejoins at the back.
 function assignSlots(){
   const h=G.holder;
   const handlers=G.off.filter(e=>e.idx!==h&&e.p.pos==='H');
   const cutters=G.off.filter(e=>e.idx!==h&&e.p.pos!=='H');
-  handlers.forEach((e,i)=>{if(i<2){e.slot=i;e.lane='H'}else{cutters.unshift(e)}});
-  cutters.forEach((e,i)=>{e.slot=i;e.lane='C'});
+  handlers.forEach((e,i)=>{if(i<2){e.slot=i;e.lane='H'}else cutters.push(e)});
+  for(const e of cutters)e.lane='C';
+  const ids=new Set(cutters.map(e=>e.idx));
+  G.stack=(G.stack||[]).filter(i=>ids.has(i));
+  for(const e of cutters)if(!G.stack.includes(e.idx))G.stack.push(e.idx);
+}
+function stackY(){return clamp(lerp(20,G.anchor.y,.3)-G.os*2,10,30)}
+function stackSpot(k,n){
+  const front=G.anchor.x+11,back=106;
+  let sp=3;if(n>1&&front+(n-1)*sp>back)sp=Math.max(1.6,(back-front)/(n-1));
+  return[clamp(front+k*sp,1,107),stackY()];
 }
 function slotPos(e){
   const a=G.anchor,os=G.os;
@@ -456,7 +467,8 @@ function slotPos(e){
     if(e.slot===0)return[clamp(a.x-4.5,.5,108),clamp(a.y-os*5,2,38)];
     return[clamp(a.x+1,.5,108),clamp(a.y-os*12,3,37)];
   }
-  return[clamp(a.x+10+e.slot*4.2,1,107),clamp(lerp(20,a.y,.35),5,35)];
+  const k=G.stack?G.stack.indexOf(e.idx):-1;
+  return stackSpot(k<0?(G.stack?G.stack.length:0):k,G.stack?G.stack.length:1);
 }
 function setupPossession(x,y,label){
   G.flight=null;
@@ -466,6 +478,8 @@ function setupPossession(x,y,label){
   if(meEnt&&Math.random()<.35)h=meEnt;
   G.holder=h.idx;G.anchor={x,y};
   h.x=x;h.y=y;h.vx=h.vy=0;h.state='holder';
+  G.stack=shuffle(G.off.filter(e=>e!==h&&e.p.pos!=='H').map(e=>e.idx));
+  G.activeCut=-1;G.cutGap=.9;G.nextFrom=Math.random()<.5?'front':'back';
   computeForce();assignSlots();
   for(const e of G.off){
     e.hist.length=0;
@@ -477,7 +491,7 @@ function setupPossession(x,y,label){
     if(o===h){d.state='mark';d.x=h.x+Math.cos(G.markAng)*1.2;d.y=h.y+Math.sin(G.markAng)*1.2}
     else{d.state='guard';d.x=o.x+1;d.y=o.y}
   }
-  G.phase='ready';G.readyT=1.0;G.stallT=0;G.markerSet=false;G.settle=0;G.cutTimer=.5;G.resetCut=false;G.fake=0;
+  G.phase='ready';G.readyT=1.0;G.stallT=0;G.markerSet=false;G.settle=0;G.resetCut=false;G.fake=0;
   G.disc.x=x;G.disc.y=y;G.disc.z=1.1;
   G.camX=clamp(x-16,-4,FL+4-VIEW);
   if(label)banner(label,'',PAL.sea,1.0);
@@ -603,34 +617,68 @@ function updateOff(e,dt,ph){
       if(e.timer<=0||dist(e.x,e.y,e.tx,e.ty)<.8){e.state='clear';e.timer=1.4}break;
     case'clear':{const[tx,ty]=slotPos(e);steer(e,tx,ty,.75,dt);e.timer-=dt;
       if(e.timer<=0||dist(e.x,e.y,tx,ty)<1)e.state=e.lane==='H'?'handler':'stack';break}
-    default:{const[tx,ty]=slotPos(e);steer(e,tx,ty,.6,dt)}
+    // stack cutter, in order: jab to sell the other way, cut, look for it, then clear the lane
+    case'jab':steer(e,e.jx,e.jy,.8,dt);e.timer-=dt;
+      if(e.timer<=0){e.state='scut';e.timer=e.deep?2.2:1.6;const d=G.def[e.idx];d.bite=Math.max(d.bite,e.pendBite)}break;
+    case'scut':steer(e,e.tx,e.ty,1,dt);e.timer-=dt;
+      if(e.timer<=0||dist(e.x,e.y,e.tx,e.ty)<.8){e.state='linger';e.timer=e.deep?.3:.55}break;
+    case'linger':steer(e,e.tx,e.ty,.25,dt);e.timer-=dt;if(e.timer<=0)clearOut(e,true);break;
+    case'sclear':e.timer-=dt;
+      if(e.wp){steer(e,e.wp[0],e.wp[1],.8,dt);if(dist(e.x,e.y,e.wp[0],e.wp[1])<1.2)e.wp=null}
+      else{const[tx,ty]=slotPos(e);steer(e,tx,ty,.7,dt);if(dist(e.x,e.y,tx,ty)<1)e.state='stack'}
+      break;
+    default:{const[tx,ty]=slotPos(e);const far=dist(e.x,e.y,tx,ty)>2;steer(e,tx,ty,far?.6:.35,dt)}
   }
 }
 function updateDef(d,dt,ph){
   const o=G.off[d.idx];
   if(d.state==='mark')markSteer(d,dt);
   else if(ph==='ready')steer(d,o.x+1,o.y,.6,dt);
-  else if(d.state==='chase'){d.chaseDelay-=dt;if(d.chaseDelay<=0)steer(d,d.tx,d.ty,1.04,dt);else guardSteer(d,o,dt)}
+  else if(d.state==='chase'){d.chaseDelay-=dt;if(d.chaseDelay<=0)steer(d,d.tx,d.ty,1.08,dt);else guardSteer(d,o,dt)}
   else guardSteer(d,o,dt);
   if(d.bite>0)d.bite=Math.max(0,d.bite-dt*.35);
 }
-function scheduleCut(){
-  const cands=G.off.filter(e=>e.idx!==G.holder&&e.lane==='C'&&e.state==='stack');
-  const cutting=G.off.filter(e=>e.state==='cut').length;
-  if(!cands.length||cutting>=2)return;
-  const e=wpick(cands,c=>c.isMe?2.5:1);
-  const a=G.anchor,os=G.os;
-  const under=e.slot<=1?Math.random()<.7:Math.random()<.35;
-  if(under){
-    const room=os>0?38-a.y:a.y-2;
-    let ty;
-    if(room<4||Math.random()<.15)ty=a.y-os*rand(6,12);else ty=a.y+os*rand(4,Math.min(13,room));
-    e.tx=clamp(a.x+rand(5,13),.5,107);e.ty=clamp(ty,1.5,38.5);e.timer=1.5;
-  }else{
-    e.tx=clamp(a.x+rand(24,42),a.x+12,107.5);e.ty=clamp(lerp(20,a.y,.3)+os*rand(-4,12),2.5,37.5);e.timer=2.4;
+// Stack discipline: one cutter in the lane at a time. The front of the stack cuts under, the back
+// goes deep, alternating. Nobody else moves until the last cutter has cleared out of the lane.
+function stackLogic(dt){
+  const act=G.activeCut>=0?G.off[G.activeCut]:null;
+  if(act&&act.idx!==G.holder){
+    if(act.state==='jab'||act.state==='scut'||act.state==='linger')return;
+    if(act.state==='sclear'&&act.timer>.9)return;
   }
-  e.state='cut';
-  const d=G.def[e.idx];d.bite=rand(0,.32)*clamp(1+(e.p.spd-d.p.spd)*.15,.3,1.8);
+  G.cutGap-=dt;if(G.cutGap>0)return;
+  const ready=G.stack.map(i=>G.off[i]).filter(e=>e.state==='stack'&&e.idx!==G.holder);
+  if(!ready.length)return;
+  const deep=G.nextFrom==='back'&&ready.length>1;
+  const e=deep?ready[ready.length-1]:ready[0];
+  G.nextFrom=G.nextFrom==='back'?'front':'back';
+  startStackCut(e,deep);
+  G.activeCut=e.idx;G.cutGap=rand(.25,.6);
+}
+function startStackCut(e,deep){
+  const a=G.anchor,os=G.os,y0=stackY();
+  e.deep=deep;e.state='jab';e.timer=.35;
+  e.jx=clamp(e.x+(deep?-2:2.2),.5,108);e.jy=clamp(e.y+os*.6,1,39);
+  if(deep){e.tx=clamp(a.x+rand(25,38),a.x+15,107.5);e.ty=clamp(y0+os*rand(4,11),2.5,37.5)}
+  else{e.tx=clamp(a.x+rand(7,12),.5,100);e.ty=clamp(y0+os*rand(8,13),1.5,38.5)}
+  // does the defender buy the jab? Quick cutters against weak defenders get bigger bites.
+  const d=G.def[e.idx];
+  e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
+}
+function clearOut(e,toBack){
+  e.state='sclear';e.timer=1.6;
+  if(toBack&&G.stack.includes(e.idx)){G.stack.splice(G.stack.indexOf(e.idx),1);G.stack.push(e.idx)}
+  e.wp=[clamp(e.x+1,1,107),clamp(stackY()-G.os*7,2,38)];
+}
+// Receivers attack the disc: run to the earliest spot on its path they can reach in time,
+// instead of waiting at the landing point for their defender to catch up.
+function meetPoint(e,f){
+  for(let s=.35;s<=1.0001;s+=.05){
+    const px=lerp(f.fx,f.tx,s),py=lerp(f.fy,f.ty,s);
+    if(f.type==='huck'&&lerp(1.5,1,s)+4*f.apex*s*(1-s)>1.9+e.p.jmp*.09)continue;
+    if(dist(e.x,e.y,px,py)/(e.speed*1.1)+.1<=s*f.T)return[px,py];
+  }
+  return[f.tx,f.ty];
 }
 function chooseReceiver(tx,ty,ex=G.holder){
   let best=null,bt=1e9;
@@ -672,12 +720,15 @@ function throwDisc(type,ax,ay,ai){
   }
   const L=Math.hypot(tx-h.x,ty-h.y)||1;
   G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower};
+  // separation each receiver had from his defender at the release: what the rings showed
+  G.flight.sep0=G.off.map(e=>dist(e.x,e.y,G.def[e.idx].x,G.def[e.idx].y));
   G.holder=-1;G.phase='flight';
   h.state='clear';h.timer=1;
   const rcv=chooseReceiver(tx,ty,thrower);
   if(rcv){
-    rcv.state='chase';rcv.tx=clamp(tx,-1,FL+1);rcv.ty=clamp(ty,-1,FW+1);
-    const dd=G.def[rcv.idx];dd.state='chase';dd.tx=tx;dd.ty=ty;dd.chaseDelay=clamp(.34-dd.p.def*.018,.12,.32)+dd.bite;
+    const[mx,my]=meetPoint(rcv,G.flight);
+    rcv.state='chase';rcv.tx=clamp(mx,-1,FL+1);rcv.ty=clamp(my,-1,FW+1);
+    const dd=G.def[rcv.idx];dd.state='chase';dd.tx=mx;dd.ty=my;dd.chaseDelay=clamp(.24-dd.p.def*.014,.08,.22);
   }
   if(type==='huck'){
     let help=null,hd=20;
@@ -694,15 +745,15 @@ function updateFlight(dt){
     x=lerp(f.fx,f.tx,s);y=lerp(f.fy,f.ty,s);
     z=f.type==='huck'?lerp(1.5,1,s)+4*f.apex*s*(1-s):lerp(1.4,1,s);
   }else{
-    const ex=f.t-f.T,sp=f.dist/f.T;
-    x=f.tx+f.ux*sp*.55*ex;y=f.ty+f.uy*sp*.55*ex;z=1-ex*(f.type==='huck'?3.2:2.6);late=true;
+    const ex=f.t-f.T,sp=Math.min(f.dist/f.T*.55,10);
+    x=f.tx+f.ux*sp*ex;y=f.ty+f.uy*sp*ex;z=1-ex*(f.type==='huck'?3.2:2.6);late=true;
   }
   G.disc.x=x;G.disc.y=y;G.disc.z=Math.max(0,z);
   if(z<=0){
     const out=x<0||x>FL||y<0||y>FW;
     turnover({label:out?'OUT':'TURF',x,y,kind:out?'out':'turf',f});return;
   }
-  if(f.t<.12)return;
+  if(f.t<.07)return;
   const contacts=[];
   for(const e of G.off){
     if(e.idx===f.thrower||f.touched.has(e))continue;
@@ -713,6 +764,8 @@ function updateFlight(dt){
   for(const e of G.def){
     if(f.touched.has(e))continue;
     if(e.idx===f.thrower&&f.t<.3)continue;
+    // the receiver's own defender makes his play at the catch (below), not by running through the lane
+    if(e.state==='chase'&&e.idx!==f.thrower&&f.sep0&&G.off[e.idx].state==='chase')continue;
     if(z>1.95+e.p.jmp*.09)continue;
     const r=.68+e.p.def*.035+(late?.4:0),dd=dist(e.x,e.y,x,y);
     if(dd<r)contacts.push({e,dd});
@@ -734,8 +787,30 @@ function updateFlight(dt){
     const pD=clamp(.2+c.e.p.def*.04-thrP.thr*.015+(late?-.08:0),.1,.65);
     if(Math.random()<pD){turnover({label:late?'LAYOUT D':'D!',x,y,by:c.e,kind:'d',f});if(late)maybeInjury(c.e,.05)}
   }else{
-    const contested=G.def.some(d=>dist(d.x,d.y,x,y)<1.6);
-    let pc=.9+c.e.p.hnd*.01-(late?.2:0)-(contested?.1:0)-(f.type==='huck'?.04:0);
+    // A guarded receiver can't just pull it in: the closest defender gets a play on the disc.
+    // Inside about a yard and a half it's usually a D. Three yards of separation and it's clean.
+    let nd=null,ndd=1e9;
+    for(const d of G.def){if(f.touched.has(d)||(d.idx===f.thrower&&f.t<.4))continue;const q=dist(d.x,d.y,x,y);if(q<ndd){ndd=q;nd=d}}
+    {
+      // 1) His own defender: mostly decided by separation at the release (the ring you saw),
+      //    then by how close the defender got by the time the disc arrived.
+      // 2) Anyone else's defender only gets it if he's practically standing on the catch.
+      const huck=f.type==='huck',rp=c.e.p,ownD=G.def[c.e.idx];
+      const skill=dp=>((huck?dp.jmp*.6+dp.def*.4:dp.def*.65+dp.spd*.35)-(huck?rp.jmp*.5+rp.hnd*.5:rp.hnd*.5+rp.spd*.5))*.04;
+      let pOwn=0,pOther=0;
+      if(ownD&&!f.touched.has(ownD)&&!(ownD.idx===f.thrower&&f.t<.4)){
+        const dOwn=dist(ownD.x,ownD.y,x,y),s0=f.sep0?f.sep0[c.e.idx]:dOwn;
+        // red ring (under 1.8 yd): he's right there. Yellow: risky. Green (3+ yd): clean.
+        const cover=s0<1.8?clamp(.9-.25*(s0-1),.7,.9):clamp(.7-.54*(s0-1.8),0,.7);
+        const near=clamp((3.5-dOwn)/2.5,0,1);
+        pOwn=clamp(cover*(.7+.3*near)+(cover>0?skill(ownD.p):0)+(late?.06:0),0,.92);
+      }
+      if(nd&&nd!==ownD)pOther=clamp(clamp((1.6-ndd)/1.2,0,1)*.7+skill(nd.p),0,.8);
+      if(Math.random()<pOwn){turnover({label:huck?'SKYED!':'D!',x,y,by:ownD,kind:'d',f});return}
+      if(Math.random()<pOther){turnover({label:huck?'SKYED!':'D!',x,y,by:nd,kind:'d',f});return}
+    }
+    const contested=ndd<2;
+    let pc=.95+c.e.p.hnd*.005-(late?.15:0)-(contested?.05:0)-(f.type==='huck'?.03:0);
     pc=clamp(pc,.35,.985);
     if(Math.random()<pc){doCatch(c.e,f,late?'LAYOUT!':null);if(late)maybeInjury(c.e,.05)}
     else turnover({label:'DROP',x,y,kind:'drop',recv:c.e,f});
@@ -757,6 +832,8 @@ function doCatch(e,f,label){
   G.anchor={x:e.x,y:e.y};
   G.phase='live';G.settle=.28;G.stallT=0;G.markerSet=false;G.resetCut=false;G.fake=0;
   computeForce();assignSlots();
+  for(const o of G.off)if(o!==e&&(o.state==='jab'||o.state==='scut'||o.state==='linger'))clearOut(o,true);
+  G.activeCut=-1;G.cutGap=rand(.3,.6);
   for(const d of G.def)d.state=d.idx===e.idx?'mark':'guard';
 }
 function goal(e,thrEnt){
@@ -795,12 +872,11 @@ function liveLogic(dt){
     if(n!==before&&!G.demo&&n>1)SFX.stall(n);
     if(G.stallT>=9*.85+.4){stallOut();return}
   }
-  G.cutTimer-=dt;
-  if(G.cutTimer<=0){scheduleCut();G.cutTimer=rand(.8,1.5)}
+  stackLogic(dt);
   if(!G.resetCut&&stallNum()>=6){
     G.resetCut=true;
     const dump=G.off.find(e=>e.lane==='H'&&e.slot===0&&e.idx!==G.holder);
-    if(dump){dump.state='cut';dump.timer=1.3;dump.tx=clamp(G.anchor.x+rand(1,4),.5,107);dump.ty=clamp(G.anchor.y+G.os*rand(3,6),1.5,38.5)}
+    if(dump){dump.state='cut';dump.timer=1.3;dump.tx=clamp(G.anchor.x-rand(2.5,4),.5,107);dump.ty=clamp(G.anchor.y+G.os*rand(5,8),1.5,38.5)}
   }
   if(G.demo&&G.settle<=0){
     G.demoTimer-=dt;
@@ -810,11 +886,12 @@ function liveLogic(dt){
         if(e.idx===G.holder)continue;
         const d=G.def[e.idx],sep=dist(e.x,e.y,d.x,d.y),dd=dist(e.x,e.y,h.x,h.y);
         if(dd>45)continue;
-        const sc=sep*1.5+(e.x-h.x)*.08+(e.state==='cut'?1:0);
-        if(sc>bs){bs=sc;best=e}
+        const sc=sep*1.5+(e.x-h.x)*.08+(e.state==='scut'||e.state==='cut'?1:0);
+        if(sc>bs){bs=sc;best=e;best.sep=sep}
       }
-      if(best){const ax=best.x+best.vx*.55,ay=best.y+best.vy*.55;throwDisc(dist(ax,ay,h.x,h.y)>30?'huck':'flat',ax,ay,true)}
-      G.demoTimer=rand(.9,1.8);
+      // wait for someone to get open, unless the stall is getting high
+      if(best&&(best.sep>=2.6||stallNum()>=7)){const ax=best.x+best.vx*.55,ay=best.y+best.vy*.55;throwDisc(dist(ax,ay,h.x,h.y)>30?'huck':'flat',ax,ay,true);G.demoTimer=rand(.9,1.8)}
+      else G.demoTimer=.2;
     }
   }
 }
@@ -1102,7 +1179,7 @@ function drawGroundLayer(){
   for(const e of G.off){
     if(e.idx===G.holder)continue;
     const d=G.def[e.idx],sep=dist(e.x,e.y,d.x,d.y);
-    const c=sep>=3.2?PAL.sea:sep>=1.8?PAL.gold:PAL.red;
+    const c=sep>=3?PAL.sea:sep>=1.8?PAL.gold:PAL.red;
     const X=sx(e.x),Y=sy(e.y);
     ctx.globalAlpha=.9;
     rect(X-9,Y-1,18,2,c);rect(X-11,Y+1,3,2,c);rect(X+8,Y+1,3,2,c);rect(X-9,Y+3,18,2,c);
@@ -1260,7 +1337,8 @@ function showHow(back){
       </div>
       <ul>
         <li>You control whoever holds the disc. Throwers can't run, so every point is a chain of passes into the end zone on the right.</li>
-        <li>Rings under teammates show how open they are: <b class="good">green</b> open, <b class="gold">yellow</b> tight, <b class="bad">red</b> covered. Lead cutters into space.</li>
+        <li>Your cutters run a vertical stack: one at a time, front of the stack cuts under, back of the stack goes deep, then they clear out and rejoin at the back. Watch for the jab step: that's the next cutter going.</li>
+        <li>Rings under teammates show separation: <b class="good">green</b> is open, <b class="gold">yellow</b> is risky, <b class="bad">red</b> means the defender is right there and will probably get the D. Lead cutters into space away from their defender.</li>
         <li>The <b class="bad">red wedge</b> is the mark. Throws into it can get point-blocked. Fake first, or throw to the open side.</li>
         <li>The marker counts to ten. Throw before the stall, and expect a dump cut from your handler around 6.</li>
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
@@ -1633,6 +1711,6 @@ function boot(data){
 }
 window.claude?.hot?.snapshot?.(()=>({career:CAR||loadCareer()}));
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
-window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub};
+window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub,step:dt=>update(dt)};
 })();
 </script>

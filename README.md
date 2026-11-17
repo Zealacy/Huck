@@ -7,6 +7,8 @@ Open `index.html` in a browser to play. It's a single file with no build step. `
 ## Modes
 - **Quick game:** pick any two of 17 real high school programs from Washington, Oregon and California and play to 7.
 - **Rosters and subs:** every team carries 14 players. Before each point you call a line of seven (O-line, D-line, freshest legs or your own picks), or let the coach do it. Players tire the more points they play and recover on the sideline. Subs only happen between points, except for injury subs after layouts and sky battles. Each team gets two timeouts.
+- **Offense:** your cutters run a vertical stack with real discipline. One cutter goes at a time: the front of the stack cuts under, the back goes deep, and each cutter jab-steps, cuts, then clears out of the lane and rejoins at the back. The next cutter waits until the lane is clear.
+- **Separation matters:** the ring under each receiver shows separation from their defender. Throw to a covered (red) receiver and the defender usually gets the D; tight (yellow) is risky; open (green) is a clean catch. Receivers attack the disc instead of waiting for it.
 - **Star ratings:** most players are 1–3 stars, good programs have a few 4-star players, and 5-star players are rare (about two in the whole league).
 - **Career:** make a player (Handler, Cutter or Defender), join a school and play four seasons. You get an 8-game schedule, the Pacific Championships bracket, XP, level-ups and skill points to spend on Throws, Speed, Hands, Hops, Defense and Stamina.
 
