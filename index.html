@@ -214,7 +214,7 @@ ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
 const SAVE_KEY='pacific-huck-career-v1';
-const VERSION='Version 11 · Nov 17';
+const VERSION='Version 12 · Nov 17';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1284,7 +1284,6 @@ function drawField(){
   text(G.opp.team.abbr,sx(100),sy(22),40,PAL.chalk,'center',false);
   ctx.globalAlpha=1;
 }
-function drawStar(X,Y,c){rect(X-1,Y-4,3,2,c);rect(X-4,Y-2,9,2,c);rect(X-2,Y,5,2,c);rect(X-3,Y+2,2,2,c);rect(X+2,Y+2,2,2,c)}
 function drawPlayer(e,col){
   const X=sx(e.x),Y=sy(e.y);if(X<-30||X>W+30)return;
   const left=X-7,top=Y-13*P,f=e.face;
@@ -1310,7 +1309,7 @@ function drawPlayer(e,col){
     const b=Math.sin(G.t*6)>0?1:0;
     rect(X-3,top-9-b,7,2,PAL.gold);rect(X-2,top-7-b,5,2,PAL.gold);rect(X-1,top-5-b,3,2,PAL.gold);
     text('YOU',X,top-12-b,9,PAL.gold,'center');
-  }else if(starsOf(e.p.base||e.p)>=4){drawStar(X,top-8,e.side==='off'?PAL.gold:'#f0e2b0')}
+  }
 }
 function drawDisc(){
   const d=G.disc,X=sx(d.x),Y=sy(d.y);
@@ -1361,32 +1360,18 @@ function drawAim(){
   const r=chooseReceiver(tx,ty);
   G.aimR=r||null;
 }
-// Catch-chance badge above each teammate: the percent and its color say how open he is right now.
-// The teammate your aim would send gets a white outline. Crowded badges stack up with a pointer line.
-function pctGlyph(x,y,c){rect(x,y,2,2,c);rect(x+4,y+5,2,2,c);for(let i=0;i<7;i++)rect(x+5-Math.round(i*5/6),y+i,1,1,c)}
-function drawBadges(){
+// A small colored dot above each teammate: green open, yellow contested, red covered.
+// The teammate your aim would send gets a white ring around his dot.
+function dot(X,Y,c){rect(X-1,Y-3,3,1,c);rect(X-2,Y-2,5,1,c);rect(X-3,Y-1,7,3,c);rect(X-2,Y+2,5,1,c);rect(X-1,Y+3,3,1,c)}
+function drawOpenDots(){
   if(!(G.phase==='live'||G.phase==='ready')||G.demo||G.holder<0)return;
-  const items=[];
   for(const e of G.off){
     if(e.idx===G.holder)continue;
     const X=sx(e.x);if(X<-20||X>W+20)continue;
-    const o=openCached(e),lift=e.isMe?18:starsOf(e.p.base||e.p)>=4?6:0;
-    items.push({e,X,head:sy(e.y)-13*P-lift,o,pct:catchPct(o)});
-  }
-  items.sort((a,b)=>a.X-b.X);
-  const placed=[],w=32,h=13;
-  ctx.font=`700 10px ${FONT}`;
-  for(const it of items){
-    const bx=Math.round(it.X-w/2);let by=it.head-h-8,g=0;
-    while(g++<6&&placed.some(q=>bx<q.x+q.w+3&&bx+w+3>q.x&&by<q.y+q.h+3&&by+h+3>q.y))by-=h+5;
-    placed.push({x:bx,y:by,w,h});
-    const col=openColor(it.o),aimed=G.aimR===it.e;
-    if(it.head-h-8-by>1)rect(it.X,by+h+4,1,Math.max(0,it.head-6-(by+h+4)),col);
-    if(aimed)rect(bx-3,by-3,w+6,h+6,PAL.chalk);
-    rect(bx-1,by-1,w+2,h+2,PAL.ink);rect(bx,by,w,h,col);
-    rect(it.X-3,by+h,7,2,col);rect(it.X-1,by+h+2,3,2,col);
-    const num=String(it.pct),tw=ctx.measureText(num).width,x0=Math.round(it.X-(tw+8)/2);
-    text(num,x0,by+h-3,10,PAL.ink,'left',false);pctGlyph(Math.round(x0+tw+2),by+3,PAL.ink);
+    const Y=sy(e.y)-13*P-(e.isMe?28:8);
+    if(G.aimR===e){dot(X,Y,PAL.chalk);rect(X-4,Y-1,9,3,PAL.chalk);rect(X-1,Y-4,3,9,PAL.chalk);rect(X-3,Y-3,7,7,PAL.chalk)}
+    rect(X-2,Y-3,5,7,PAL.ink);rect(X-3,Y-2,7,5,PAL.ink);
+    dot(X,Y,openColor(openCached(e)));
   }
 }
 function drawHUD(){
@@ -1449,7 +1434,7 @@ function render(){
   ents.sort((a,b)=>a[0].y-b[0].y);
   for(const[e,c]of ents)drawPlayer(e,c);
   if(G.phase!=='defense'&&G.phase!=='wait'&&G.phase!=='idle')drawDisc();
-  G.aimR=null;drawAim();drawBadges();
+  G.aimR=null;drawAim();drawOpenDots();
   if(G.rain){ctx.fillStyle='rgba(200,215,230,.45)';for(const r of G.rainDrops)ctx.fillRect(Math.round(r.x),Math.round(r.y),1,7)}
   drawHUD();drawBanner();
   if(note){note.t-=1/60;text(note.s.toUpperCase(),W/2,H-30,12,PAL.chalk,'center');if(note.t<=0)note=null}
@@ -1516,7 +1501,7 @@ function showHow(back){
         <li>You control whoever holds the disc. Throwers can't run, so every point is a chain of passes into the end zone on the right.</li>
         <li>Your cutters run a vertical stack: one at a time, front of the stack cuts under, back of the stack goes deep, then they clear out and rejoin at the back. Watch for the jab step: that's the next cutter going.</li>
         <li>Catches come down to position. If the receiver is between the disc and his defender, he catches it. If the defender is between the disc and the receiver, it's usually a D. On hucks, whoever is under it wins. Good hands or good defense can still steal one from a bad spot.</li>
-        <li>The badge over each teammate is his catch chance if you threw it to him right now, counting the race between him and his defender: <b class="good">green</b> is open, <b class="gold">yellow</b> is contested, <b class="bad">red</b> means his defender will probably get it. The one your aim would send gets a white outline. The ring under his feet shows the same color.</li>
+        <li>The dot over each teammate shows how open he is if you threw it to him right now: <b class="good">green</b> is open, <b class="gold">yellow</b> is contested, <b class="bad">red</b> means his defender will probably get it. The one your aim would send gets a white ring.</li>
         <li>The <b class="bad">red wedge</b> is the mark. Throws into it can get point-blocked. Fake first, or throw to the open side.</li>
         <li>The marker counts to ten. Throw before the stall, and expect a dump cut from your handler around 6.</li>
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
