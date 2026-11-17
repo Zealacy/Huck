@@ -188,25 +188,25 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 function hexRgb(h){const n=parseInt(h.slice(1),16);return[n>>16&255,n>>8&255,n&255]}
 function colorClose(a,b){const x=hexRgb(a),y=hexRgb(b);return Math.hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2])<120}
 
-// ---------------------------------------------------------------- teams (real West Coast high school programs; colors are placeholders)
+// ---------------------------------------------------------------- teams (real West Coast high school programs and their school colors)
 const TEAMS=[
- {id:'lks',name:'Lakeside',city:'Seattle',st:'WA',abbr:'LKS',c1:'#1f7a4d',c2:'#f2c14e'},
- {id:'gar',name:'Garfield',city:'Seattle',st:'WA',abbr:'GAR',c1:'#5b3a99',c2:'#f5c542'},
- {id:'roo',name:'Roosevelt',city:'Seattle',st:'WA',abbr:'RHS',c1:'#8a1f2c',c2:'#e8d7a8'},
- {id:'bal',name:'Ballard',city:'Seattle',st:'WA',abbr:'BAL',c1:'#c62828',c2:'#1b1b1b'},
- {id:'bai',name:'Bainbridge',city:'Bainbridge Island',st:'WA',abbr:'BAI',c1:'#1e4fa3',c2:'#f2d14b'},
- {id:'nws',name:'Northwest School',city:'Seattle',st:'WA',abbr:'NWS',c1:'#0f8a8a',c2:'#f0f0f0'},
- {id:'gra',name:'Grant',city:'Portland',st:'OR',abbr:'GRA',c1:'#3b2a6e',c2:'#d9d9d9'},
- {id:'lin',name:'Lincoln',city:'Portland',st:'OR',abbr:'LIN',c1:'#b3122e',c2:'#f4f4f4'},
- {id:'cle',name:'Cleveland',city:'Portland',st:'OR',abbr:'CLE',c1:'#2364aa',c2:'#f7b32b'},
- {id:'cgs',name:'Catlin Gabel',city:'Portland',st:'OR',abbr:'CGS',c1:'#16325c',c2:'#9ec5e8'},
- {id:'seh',name:'South Eugene',city:'Eugene',st:'OR',abbr:'SEH',c1:'#263238',c2:'#ffb300',elite:true},
- {id:'pal',name:'Palo Alto',city:'Palo Alto',st:'CA',abbr:'PAL',c1:'#1d6b3a',c2:'#ffffff'},
- {id:'gun',name:'Gunn',city:'Palo Alto',st:'CA',abbr:'GUN',c1:'#a4161a',c2:'#111111'},
- {id:'bhs',name:'Berkeley',city:'Berkeley',st:'CA',abbr:'BHS',c1:'#d99a00',c2:'#7a1010'},
- {id:'bod',name:"Bishop O'Dowd",city:'Oakland',st:'CA',abbr:'BOD',c1:'#2d6a2e',c2:'#e6c34a'},
- {id:'men',name:'Menlo School',city:'Atherton',st:'CA',abbr:'MEN',c1:'#1c3f94',c2:'#f28c28'},
- {id:'lws',name:'Lick-Wilmerding',city:'San Francisco',st:'CA',abbr:'LWS',c1:'#e85d04',c2:'#1a1a1a'},
+ {id:'lks',name:'Lakeside',city:'Seattle',st:'WA',abbr:'LKS',c1:'#7a1f2b',c2:'#f2c14e'},
+ {id:'gar',name:'Garfield',city:'Seattle',st:'WA',abbr:'GAR',c1:'#5b2d8e',c2:'#f4f4f4'},
+ {id:'roo',name:'Roosevelt',city:'Seattle',st:'WA',abbr:'RHS',c1:'#1f8a3a',c2:'#f2c230'},
+ {id:'bal',name:'Ballard',city:'Seattle',st:'WA',abbr:'BAL',c1:'#c8102e',c2:'#111111'},
+ {id:'bai',name:'Bainbridge',city:'Bainbridge Island',st:'WA',abbr:'BAI',c1:'#13294b',c2:'#f1b82d'},
+ {id:'nws',name:'Northwest School',city:'Seattle',st:'WA',abbr:'NWS',c1:'#7b1e34',c2:'#f2f2f2'},
+ {id:'gra',name:'Grant',city:'Portland',st:'OR',abbr:'GRA',c1:'#1f4fa0',c2:'#a3abb3'},
+ {id:'lin',name:'Lincoln',city:'Portland',st:'OR',abbr:'LIN',c1:'#c8102e',c2:'#f4f4f4'},
+ {id:'cle',name:'Cleveland',city:'Portland',st:'OR',abbr:'CLE',c1:'#2a9d3c',c2:'#ffe14d'},
+ {id:'cgs',name:'Catlin Gabel',city:'Portland',st:'OR',abbr:'CGS',c1:'#1f4ed8',c2:'#f4f4f4'},
+ {id:'seh',name:'South Eugene',city:'Eugene',st:'OR',abbr:'SEH',c1:'#4b2e83',c2:'#f4f4f4',elite:true},
+ {id:'pal',name:'Palo Alto',city:'Palo Alto',st:'CA',abbr:'PAL',c1:'#0b6b3a',c2:'#f4f4f4'},
+ {id:'gun',name:'Gunn',city:'Palo Alto',st:'CA',abbr:'GUN',c1:'#b0151d',c2:'#111111'},
+ {id:'bhs',name:'Berkeley',city:'Berkeley',st:'CA',abbr:'BHS',c1:'#c1121f',c2:'#f5c518'},
+ {id:'bod',name:"Bishop O'Dowd",city:'Oakland',st:'CA',abbr:'BOD',c1:'#161616',c2:'#d4a72c'},
+ {id:'men',name:'Menlo School',city:'Atherton',st:'CA',abbr:'MEN',c1:'#0b2a5b',c2:'#e8b52a'},
+ {id:'lws',name:'Lick-Wilmerding',city:'San Francisco',st:'CA',abbr:'LWS',c1:'#141414',c2:'#f0b323'},
 ];
 const TEAM=id=>TEAMS.find(t=>t.id===id);
 const STATE_NAME={WA:'Washington',OR:'Oregon',CA:'California'};
@@ -1104,7 +1104,7 @@ function showTeamPick(eyebrow,title,exclude,cb,back){
   show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*820)">
     <div class="row between"><div><div class="eyebrow">${esc(eyebrow)}</div><h2>${esc(title)}</h2></div><button class="btn alt small" id="tback">Back</button></div>
     <div class="states">${cols}</div>
-    <p class="dim" style="font-size:calc(var(--u)*13)">Real schools, fictional players. Rosters are generated. Colors are stand-ins, not official.</p>
+    <p class="dim" style="font-size:calc(var(--u)*13)">Real schools in their school colors. Every player is fictional and generated.</p>
   </div></div>`);
   ui.querySelectorAll('.tile').forEach(b=>b.addEventListener('click',()=>{SFX.click();cb(b.dataset.id)}));
   on('tback',back||showTitle);
