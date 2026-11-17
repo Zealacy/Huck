@@ -207,7 +207,7 @@ ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
 const SAVE_KEY='pacific-huck-career-v1';
-const VERSION='Version 10 · Nov 17';
+const VERSION='Version 11 · Nov 17';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -624,6 +624,14 @@ function integrate(e,dt){
   e.anim+=Math.hypot(e.vx,e.vy)*dt;
   if(Math.abs(e.vx)>.5)e.face=e.vx>0?1:-1;
 }
+// Bodies: two players can't occupy the same spot, so a receiver can't run through the defender
+// standing in front of him. He has to go around.
+function separate(a,b,min=.75){
+  const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
+  if(d>=min||d<1e-4)return;
+  const push=(min-d)/2,ux=dx/d,uy=dy/d;
+  a.x-=ux*push;a.y-=uy*push;b.x+=ux*push;b.y+=uy*push;
+}
 function histAt(o,t){
   const h=o.hist;if(!h.length)return{x:o.x,y:o.y};
   for(let i=h.length-1;i>=0;i--)if(h[i][0]<=t)return{x:h[i][1],y:h[i][2]};
@@ -680,7 +688,9 @@ function updateDef(d,dt,ph){
   const o=G.off[d.idx];
   if(d.state==='mark')markSteer(d,dt);
   else if(ph==='ready')steer(d,o.x+1,o.y,.6,dt);
-  else if(d.state==='chase'){d.chaseDelay-=dt;if(o.state==='chase'&&!d.help){d.tx=o.tx;d.ty=o.ty}if(d.chaseDelay<=0)steer(d,d.tx,d.ty,1.08,dt,55,9);else guardSteer(d,o,dt)}
+  else if(d.state==='chase'){d.chaseDelay-=dt;
+    // race to the spot just ahead of where his man meets the disc: in front, he takes it; beaten, the man's body is in the way
+    if(o.state==='chase'&&!d.help){const f=G.flight;d.tx=o.tx-(f?f.ux:0);d.ty=o.ty-(f?f.uy:0)}if(d.chaseDelay<=0)steer(d,d.tx,d.ty,1.08,dt,55,9);else guardSteer(d,o,dt)}
   else guardSteer(d,o,dt);
   if(d.bite>0)d.bite=Math.max(0,d.bite-dt*.35);
 }
@@ -788,25 +798,26 @@ function openness(e){
   const r={x:e.x,y:e.y,vx:e.vx,vy:e.vy,speed:e.speed,p:e.p,tx:ax,ty:ay};
   const d={x:od.x,y:od.y,vx:od.vx,vy:od.vy,speed:od.speed,p:od.p};
   // everyone else keeps moving with the man he guards
-  const others=G.def.filter(q=>q!==od&&q.idx!==G.holder).map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,p:q.p}));
+  const others=G.def.filter(q=>q!==od).map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,p:q.p,mark:q.idx===G.holder}));
   let delay=clamp(.24-od.p.def*.014,.08,.22);
   const dt=1/60,end=T+(huck?.28:.36);
   for(f.t=dt;f.t<=end;f.t+=dt){
     const m=meetPoint(r,f);r.tx=m[0];r.ty=m[1];
     steer(r,r.tx,r.ty,1.12,dt,60,25);
-    if(delay>0)delay-=dt;else steer(d,r.tx,r.ty,1.08,dt,55,9);
+    if(delay>0)delay-=dt;else steer(d,r.tx-f.ux,r.ty-f.uy,1.08,dt,55,9);
     r.x+=r.vx*dt;r.y+=r.vy*dt;d.x+=d.vx*dt;d.y+=d.vy*dt;
     if(f.t<.7)for(const q of others){q.x+=q.vx*dt;q.y+=q.vy*dt}
+    separate(r,d);for(const q of others)separate(r,q);
     const c=discAt(f,f.t);
     if(c.z<=0)return .95;
     if(f.t<.07)continue;
-    for(const q of others)if(c.z<=1.95+q.p.jmp*.09&&dist(q.x,q.y,c.x,c.y)<.68+q.p.def*.035)return .75;
+    for(const q of others)if(!(q.mark&&f.t<.3)&&c.z<=1.95+q.p.jmp*.09&&dist(q.x,q.y,c.x,c.y)<.5+q.p.def*.03)return .45;
     if(c.z<=1.95+d.p.jmp*.09&&dist(d.x,d.y,c.x,c.y)<.68+d.p.def*.035)return .8;
     const rd=dist(r.x,r.y,c.x,c.y);
     if(c.z<=1.9+r.p.jmp*.09&&rd<1.15+r.p.hnd*.03+(c.late?.65:0)){
       const rAlong=(r.x-c.x)*f.ux+(r.y-c.y)*f.uy;
       let p=posD(r.p,d.p,d.x,d.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late);
-      for(const q of others)p=Math.max(p,posD(r.p,q.p,q.x,q.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late));
+      for(const q of others)if(!(q.mark&&f.t<.4))p=Math.max(p,posD(r.p,q.p,q.x,q.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late));
       return p;
     }
   }
@@ -814,6 +825,14 @@ function openness(e){
 }
 // Who goes for it: the teammate who will be closest to the spot when the disc gets there,
 // judged by where everyone is running, not where they are standing.
+// What the badge shows: the D chance from the simulation, calibrated against thousands of simulated
+// throws (the best looks complete about 83%, a blanketed receiver still sneaks one through about a quarter of the time).
+const catchPct=o=>Math.round(25+58*Math.pow(1-o,10));
+const openColor=o=>{const c=catchPct(o);return c>=70?PAL.sea:c>=45?PAL.gold:PAL.red};
+function openCached(e){
+  if(e._oT==null||G.t-e._oT>.06||G.t<e._oT||e._oH!==G.holder){e._o=openness(e);e._oT=G.t;e._oH=G.holder}
+  return e._o;
+}
 function chooseReceiver(tx,ty,ex=G.holder,T){
   if(T==null){const h=G.holder>=0?G.off[G.holder]:null;const L=h?dist(h.x,h.y,tx,ty):15;T=L/22+(L>30?.35:0)}
   let best=null,bt=1e9;
@@ -840,7 +859,7 @@ function throwDisc(type,ax,ay,ai){
   const maxR=type==='flat'?flatRange(thr):huckRange(thr);
   if(d>maxR){dx*=maxR/d;dy*=maxR/d;d=maxR}
   let tx=h.x+dx,ty=h.y+dy;
-  let err=d*(type==='flat'?(.06-thr*.0042):(.095-thr*.006));if(stallNum()>=8)err*=1.6;
+  let err=d*(type==='flat'?(.035-thr*.0025):(.095-thr*.006));if(stallNum()>=8)err*=1.6;
   const ea=Math.random()*Math.PI*2,er=err*Math.sqrt(Math.random())*1.2;
   tx+=Math.cos(ea)*er;ty+=Math.sin(ea)*er;
   const sp=type==='flat'?19+thr*.9:14+thr*.55;
@@ -899,7 +918,7 @@ function updateFlight(dt){
     if(f.touched.has(e))continue;
     if(e.idx===f.thrower&&f.t<.3)continue;
     if(z>1.95+e.p.jmp*.09)continue;
-    const r=.68+e.p.def*.035+(late?.4:0),dd=dist(e.x,e.y,x,y);
+    const own=e.idx===f.rcv,r=(own?.68+e.p.def*.035:.5+e.p.def*.03)+(late?.4:0),dd=dist(e.x,e.y,x,y);
     if(dd<r)contacts.push({e,dd});
   }
   if(!contacts.length)return;
@@ -917,7 +936,8 @@ function updateFlight(dt){
   const c=contacts[0];f.touched.add(c.e);
   if(c.e.side==='def'){
     // he got to it first, so he's in front of the throw: usually a D
-    const pD=clamp(.72+(c.e.p.def-thrP.thr)*.03+(late?-.1:0),.45,.9);
+    const own=c.e.idx===f.rcv;
+    const pD=own?clamp(.72+(c.e.p.def-thrP.thr)*.03+(late?-.1:0),.45,.9):clamp(.4+(c.e.p.def-thrP.thr)*.03,.2,.6);
     if(Math.random()<pD){turnover({label:late?'LAYOUT D':'D!',x,y,by:c.e,kind:'d',f});if(late)maybeInjury(c.e,.05)}
   }else{
     const huck=f.type==='huck';
@@ -1006,7 +1026,7 @@ function liveLogic(dt){
         if(sc>bs){bs=sc;best=e;best.open=o}
       }
       // wait for someone to get open, unless the stall is getting high
-      if(best&&(best.open<.2||stallNum()>=8)){const{ax,ay,huck}=leadSpot(h,best);throwDisc(huck?'huck':'flat',ax,ay,true);G.demoTimer=rand(.9,1.8)}
+      if(best&&(catchPct(best.open)>=70||stallNum()>=8)){const{ax,ay,huck}=leadSpot(h,best);throwDisc(huck?'huck':'flat',ax,ay,true);G.demoTimer=rand(.9,1.8)}
       else G.demoTimer=.2;
     }
   }
@@ -1027,6 +1047,7 @@ function update(dt){
     for(const d of G.def)updateDef(d,dt,G.phase);
     for(const e of G.off)integrate(e,dt);
     for(const e of G.def)integrate(e,dt);
+    for(const o of G.off)for(const d of G.def)if(o.idx!==G.holder||d.state!=='mark')separate(o,d);
     if(G.phase==='flight')updateFlight(dt);
     if(G.holder>=0){
       const h=G.off[G.holder];
@@ -1295,7 +1316,7 @@ function drawGroundLayer(){
   if(!(G.phase==='live'||G.phase==='ready')||G.demo)return;
   for(const e of G.off){
     if(e.idx===G.holder)continue;
-    const o=openness(e),c=o<.2?PAL.sea:o<.5?PAL.gold:PAL.red;
+    const o=openCached(e),c=openColor(o);
     const X=sx(e.x),Y=sy(e.y);
     ctx.globalAlpha=.9;
     rect(X-9,Y-1,18,2,c);rect(X-11,Y+1,3,2,c);rect(X+8,Y+1,3,2,c);rect(X-9,Y+3,18,2,c);
@@ -1331,7 +1352,35 @@ function drawAim(){
   text(`${huck?'HUCK':'FLAT'} ${Math.round(d)}YD`,X+14,Y-6,10,c,'left');
   if(inW)text('INTO THE MARK',X+14,Y+8,9,PAL.sunset,'left');
   const r=chooseReceiver(tx,ty);
-  if(r){const RX=sx(r.x),RY=sy(r.y)-13*P-14;rect(RX-4,RY,9,2,PAL.chalk);rect(RX-2,RY+2,5,2,PAL.chalk);rect(RX,RY+4,1,2,PAL.chalk)}
+  G.aimR=r||null;
+}
+// Catch-chance badge above each teammate: the percent and its color say how open he is right now.
+// The teammate your aim would send gets a white outline. Crowded badges stack up with a pointer line.
+function pctGlyph(x,y,c){rect(x,y,2,2,c);rect(x+4,y+5,2,2,c);for(let i=0;i<7;i++)rect(x+5-Math.round(i*5/6),y+i,1,1,c)}
+function drawBadges(){
+  if(!(G.phase==='live'||G.phase==='ready')||G.demo||G.holder<0)return;
+  const items=[];
+  for(const e of G.off){
+    if(e.idx===G.holder)continue;
+    const X=sx(e.x);if(X<-20||X>W+20)continue;
+    const o=openCached(e),lift=e.isMe?12:starsOf(e.p.base||e.p)>=4?6:0;
+    items.push({e,X,head:sy(e.y)-13*P-lift,o,pct:catchPct(o)});
+  }
+  items.sort((a,b)=>a.X-b.X);
+  const placed=[],w=32,h=13;
+  ctx.font=`700 10px ${FONT}`;
+  for(const it of items){
+    const bx=Math.round(it.X-w/2);let by=it.head-h-8,g=0;
+    while(g++<6&&placed.some(q=>bx<q.x+q.w+3&&bx+w+3>q.x&&by<q.y+q.h+3&&by+h+3>q.y))by-=h+5;
+    placed.push({x:bx,y:by,w,h});
+    const col=openColor(it.o),aimed=G.aimR===it.e;
+    if(it.head-h-8-by>1)rect(it.X,by+h+4,1,Math.max(0,it.head-6-(by+h+4)),col);
+    if(aimed)rect(bx-3,by-3,w+6,h+6,PAL.chalk);
+    rect(bx-1,by-1,w+2,h+2,PAL.ink);rect(bx,by,w,h,col);
+    rect(it.X-3,by+h,7,2,col);rect(it.X-1,by+h+2,3,2,col);
+    const num=String(it.pct),tw=ctx.measureText(num).width,x0=Math.round(it.X-(tw+8)/2);
+    text(num,x0,by+h-3,10,PAL.ink,'left',false);pctGlyph(Math.round(x0+tw+2),by+3,PAL.ink);
+  }
 }
 function drawHUD(){
   if(G.demo)return;
@@ -1393,7 +1442,7 @@ function render(){
   ents.sort((a,b)=>a[0].y-b[0].y);
   for(const[e,c]of ents)drawPlayer(e,c);
   if(G.phase!=='defense'&&G.phase!=='wait'&&G.phase!=='idle')drawDisc();
-  drawAim();
+  G.aimR=null;drawAim();drawBadges();
   if(G.rain){ctx.fillStyle='rgba(200,215,230,.45)';for(const r of G.rainDrops)ctx.fillRect(Math.round(r.x),Math.round(r.y),1,7)}
   drawHUD();drawBanner();
   if(note){note.t-=1/60;text(note.s.toUpperCase(),W/2,H-30,12,PAL.chalk,'center');if(note.t<=0)note=null}
@@ -1460,7 +1509,7 @@ function showHow(back){
         <li>You control whoever holds the disc. Throwers can't run, so every point is a chain of passes into the end zone on the right.</li>
         <li>Your cutters run a vertical stack: one at a time, front of the stack cuts under, back of the stack goes deep, then they clear out and rejoin at the back. Watch for the jab step: that's the next cutter going.</li>
         <li>Catches come down to position. If the receiver is between the disc and his defender, he catches it. If the defender is between the disc and the receiver, it's usually a D. On hucks, whoever is under it wins. Good hands or good defense can still steal one from a bad spot.</li>
-        <li>Rings under teammates show that position: <b class="good">green</b> means he's in front of his man or nobody's near, <b class="gold">yellow</b> is contested, <b class="bad">red</b> means his defender is between him and you. Lead cutters into space on their side of the defender.</li>
+        <li>The badge over each teammate is his catch chance if you threw it to him right now, counting the race between him and his defender: <b class="good">green</b> is open, <b class="gold">yellow</b> is contested, <b class="bad">red</b> means his defender will probably get it. The one your aim would send gets a white outline. The ring under his feet shows the same color.</li>
         <li>The <b class="bad">red wedge</b> is the mark. Throws into it can get point-blocked. Fake first, or throw to the open side.</li>
         <li>The marker counts to ten. Throw before the stall, and expect a dump cut from your handler around 6.</li>
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
@@ -2112,6 +2161,6 @@ function boot(data){
 }
 window.claude?.hot?.snapshot?.(()=>({career:loadCareer(),coach:loadCoach()}));
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
-window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub,step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e)};
+window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub,step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e),catchPct:o=>catchPct(o)};
 })();
 </script>
