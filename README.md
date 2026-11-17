@@ -6,7 +6,9 @@ Open `index.html` in a browser to play. It's a single file with no build step. `
 
 ## Modes
 - **Quick game:** pick any two of 17 real high school programs from Washington, Oregon and California and play to 7.
-- **Career:** make a player (Handler, Cutter or Defender), join a school and play four seasons. You get an 8-game schedule, the Pacific Championships bracket, XP, level-ups and skill points to spend on Throws, Speed, Hands, Hops and Defense.
+- **Rosters and subs:** every team carries 14 players. Before each point you call a line of seven (O-line, D-line, freshest legs or your own picks), or let the coach do it. Players tire the more points they play and recover on the sideline. Subs only happen between points, except for injury subs after layouts and sky battles. Each team gets two timeouts.
+- **Star ratings:** most players are 1–3 stars, good programs have a few 4-star players, and 5-star players are rare (about two in the whole league).
+- **Career:** make a player (Handler, Cutter or Defender), join a school and play four seasons. You get an 8-game schedule, the Pacific Championships bracket, XP, level-ups and skill points to spend on Throws, Speed, Hands, Hops, Defense and Stamina.
 
 The schools are real and wear their actual school colors. Every player is generated and fictional.
 
@@ -17,6 +19,7 @@ The schools are real and wear their actual school colors. Every player is genera
 | Click | Flat throw |
 | Shift + click (or right-click) | Huck |
 | Space | Pivot fake, which opens the mark briefly |
+| T | Timeout (two per game) |
 | Esc / P | Pause |
 | M | Mute |
 | Enter, 1, 2 | Menu shortcuts and defense calls |
