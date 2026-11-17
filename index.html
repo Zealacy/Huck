@@ -200,6 +200,7 @@ const TEAMS=[
  {id:'lin',name:'Lincoln',city:'Portland',st:'OR',abbr:'LIN',c1:'#b3122e',c2:'#f4f4f4'},
  {id:'cle',name:'Cleveland',city:'Portland',st:'OR',abbr:'CLE',c1:'#2364aa',c2:'#f7b32b'},
  {id:'cgs',name:'Catlin Gabel',city:'Portland',st:'OR',abbr:'CGS',c1:'#16325c',c2:'#9ec5e8'},
+ {id:'seh',name:'South Eugene',city:'Eugene',st:'OR',abbr:'SEH',c1:'#263238',c2:'#ffb300',elite:true},
  {id:'pal',name:'Palo Alto',city:'Palo Alto',st:'CA',abbr:'PAL',c1:'#1d6b3a',c2:'#ffffff'},
  {id:'gun',name:'Gunn',city:'Palo Alto',st:'CA',abbr:'GUN',c1:'#a4161a',c2:'#111111'},
  {id:'bhs',name:'Berkeley',city:'Berkeley',st:'CA',abbr:'BHS',c1:'#d99a00',c2:'#7a1010'},
@@ -234,14 +235,14 @@ function genPlayer(r,pos,tier,used,grade){
   let n;do{n=Math.floor(r()*100)}while(used.has(n));used.add(n);p.num=n;
   return p;
 }
-function genRoster(r,prestige){
+function genRoster(r,prestige,elite){
   const used=new Set(),pos=['H','H','H','C','C','C','D'];
-  const nStars=prestige>=4?3:prestige>=2?2:1;
+  const nStars=elite?4:prestige>=4?3:prestige>=2?2:1;
   const tiers=pos.map(()=>0);
-  shuffle([0,1,2,3,4,5,6],r).slice(0,nStars).forEach((i,k)=>tiers[i]=(k===0&&prestige>=4)?2:1);
+  shuffle([0,1,2,3,4,5,6],r).slice(0,nStars).forEach((i,k)=>tiers[i]=(k===0&&prestige>=4)||(k===1&&elite)?2:1);
   const ro=pos.map((ps,i)=>genPlayer(r,ps,tiers[i],used));
-  const adj=(prestige-3)*.4;
-  ro.forEach(p=>{for(const a of ATTR)if(r()<.6)p[a]=clamp(Math.round(p[a]+adj),1,10)});
+  const adj=(prestige-3)*.4+(elite?.7:0);
+  ro.forEach(p=>{for(const a of ATTR)if(elite||r()<.6)p[a]=clamp(Math.round(p[a]+adj),1,10)});
   return ro;
 }
 const teamOff=ro=>avg(ro.map(p=>p.thr*.4+p.hnd*.3+p.spd*.3));
@@ -251,7 +252,7 @@ const topStars=(ro,n=3)=>ro.slice().sort((a,b)=>ovr(b)-ovr(a)).slice(0,n);
 
 const QUICK={};
 function quickTeam(id){
-  if(!QUICK[id]){const r=mulberry32(hashStr(id+':v1'));const pr=1+Math.floor(r()*5);QUICK[id]={prestige:pr,ro:genRoster(r,pr)}}
+  if(!QUICK[id]){const t=TEAM(id),r=mulberry32(hashStr(id+':v1'));let pr=1+Math.floor(r()*5);if(t.elite)pr=5;QUICK[id]={prestige:pr,ro:genRoster(r,pr,t.elite)}}
   return QUICK[id];
 }
 
@@ -1149,7 +1150,15 @@ function quickPost(res,myId,oppId){
 
 // ---------------------------------------------------------------- career
 let CAR=null;
-function loadCareer(){try{const s=localStorage.getItem(SAVE_KEY);return s?JSON.parse(s):null}catch(e){return null}}
+function loadCareer(){try{const s=localStorage.getItem(SAVE_KEY);return s?migrate(JSON.parse(s)):null}catch(e){return null}}
+function migrate(c){
+  if(!c||!c.rosters)return null;
+  for(const t of TEAMS){
+    if(!c.rosters[t.id]){c.prestige[t.id]=t.elite?5:randi(1,5);c.rosters[t.id]=genRoster(Math.random,c.prestige[t.id],t.elite)}
+    if(c.season&&c.season.standings&&!c.season.standings[t.id])c.season.standings[t.id]={w:0,l:0,pf:0,pa:0};
+  }
+  return c;
+}
 function saveCareer(){try{if(CAR)localStorage.setItem(SAVE_KEY,JSON.stringify(CAR));else localStorage.removeItem(SAVE_KEY)}catch(e){}}
 const xpNeed=l=>90+30*(l-1);
 const upCost=r=>r<=3?2:r-1;
@@ -1186,8 +1195,8 @@ function startCareer(info,teamId){
   const me=Object.assign({id:'me',first:info.first.slice(0,14),last:info.last.slice(0,16),num:info.num,pos:info.pos,skin:randi(0,4),hair:randi(0,6),style:randi(0,2),grade:9},START[info.pos]);
   const rosters={},prestige={};
   for(const t of TEAMS){
-    prestige[t.id]=randi(1,5);
-    const ro=genRoster(Math.random,prestige[t.id]);
+    prestige[t.id]=t.elite?5:randi(1,5);
+    const ro=genRoster(Math.random,prestige[t.id],t.elite);
     if(t.id===teamId){
       // you take a roster spot: drop a non-star with your position (or any non-star)
       let i=ro.findIndex(p=>p.pos===info.pos&&starsOf(p)<4);if(i<0)i=ro.findIndex(p=>starsOf(p)<4);if(i<0)i=6;
@@ -1205,7 +1214,7 @@ function newSeason(){
   const same=others.filter(t=>t.st===my.st),diff=others.filter(t=>t.st!==my.st);
   const nSame=Math.min(5,same.length);
   const opps=shuffle(same.slice(0,nSame).concat(diff.slice(0,8-nSame)));
-  const EV={WA:['Rainy City Invite','Cascade Cup','Puget Sound Showdown'],OR:['Rose City Classic','Willamette Weekend'],CA:['Golden Gate Open','Bay Bash','Redwood Shootout']};
+  const EV={WA:['Rainy City Invite','Cascade Cup','Puget Sound Showdown'],OR:['Rose City Classic','Willamette Weekend','Track Town Classic'],CA:['Golden Gate Open','Bay Bash','Redwood Shootout']};
   CAR.season={schedule:opps.map((t,i)=>({opp:t.id,home:i%2===0,event:pick(EV[t.st]),res:null})),week:0,
     standings:Object.fromEntries(TEAMS.map(t=>[t.id,{w:0,l:0,pf:0,pa:0}])),phase:'reg',bracket:null,round:0,seeds:null,finish:null,champ:null,
     stats:{gp:0,w:0,l:0,g:0,a:0,d:0,c:0,ct:0,to:0},awards:[]};
@@ -1394,10 +1403,10 @@ function advanceSeason(){
     const ro=CAR.rosters[t.id],used=new Set(ro.map(p=>p.num).concat(t.id===CAR.teamId?[CAR.me.num]:[]));
     for(let i=0;i<ro.length;i++){
       const p=ro[i];p.grade++;
-      if(p.grade>12){used.delete(p.num);const tier=CAR.prestige[t.id]>=4&&Math.random()<.3?1:0;ro[i]=genPlayer(Math.random,p.pos,tier,used,9)}
+      if(p.grade>12){used.delete(p.num);const tier=(t.elite&&Math.random()<.6)||(CAR.prestige[t.id]>=4&&Math.random()<.3)?1:0;ro[i]=genPlayer(Math.random,p.pos,tier,used,9)}
       else for(let k=0;k<2;k++)if(Math.random()<.7){const a=pick(ATTR);p[a]=clamp(p[a]+1,1,10)}
     }
-    CAR.prestige[t.id]=clamp(CAR.prestige[t.id]+randi(-1,1),1,5);
+    CAR.prestige[t.id]=clamp(CAR.prestige[t.id]+randi(-1,1),t.elite?4:1,5);
   }
   newSeason();saveCareer();
 }
