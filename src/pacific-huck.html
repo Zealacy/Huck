@@ -207,6 +207,7 @@ ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
 const SAVE_KEY='pacific-huck-career-v1';
+const VERSION='Version 9 · Nov 17';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1368,7 +1369,7 @@ function showTitle(){
       <button class="btn alt" id="quick">Quick game</button>
       <button class="btn alt" id="how">How to play</button>
     </div>
-    <p class="foot">Built for laptops: mouse or trackpad to aim, keyboard for the rest. <span class="kbd">M</span> mutes.</p>
+    <p class="foot">Built for laptops: mouse or trackpad to aim, keyboard for the rest. <span class="kbd">M</span> mutes. · ${VERSION}</p>
   </div></div>`);
   on('cont',()=>{CAR=C;showHub()});
   on('newc',()=>C?confirmScreen('Start a new career?',`This replaces ${esc(pname(C.me))}'s career at ${esc(TEAM(C.teamId).name)}.`,'Start a new career',showCreate,showTitle):showCreate());
