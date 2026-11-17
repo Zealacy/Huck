@@ -214,7 +214,7 @@ ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
 const SAVE_KEY='pacific-huck-career-v1';
-const VERSION='Version 9 · Nov 17';
+const VERSION='Version 10 · Nov 17';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -638,8 +638,10 @@ function histAt(o,t){
 }
 function guardSteer(d,o,dt){
   const lag=clamp(.2+(5.5-d.p.def)*.018+d.bite,.08,.75);
-  const hp=histAt(o,G.t-lag);
-  steer(d,hp.x+.75,hp.y,1,dt,48,6);
+  const hp=histAt(o,G.t-lag),a=G.anchor;
+  // person D: stay between your man and the disc
+  let nx=a.x-hp.x,ny=a.y-hp.y;const nl=Math.hypot(nx,ny)||1;
+  steer(d,hp.x+nx/nl*.8,hp.y+ny/nl*.8,1,dt,48,6);
   if(Math.abs(d.vx)<.5)d.face=o.x>d.x?1:-1;
 }
 function markSteer(d,dt){
@@ -742,9 +744,92 @@ function meetPoint(e,f){
   }
   return[f.tx,f.ty];
 }
-function chooseReceiver(tx,ty,ex=G.holder){
+// Who has position on the disc? On a flat throw, whoever is between the disc and the other player
+// gets it: a receiver in front of his defender catches it, a defender in front of the receiver
+// takes it. On a huck it's whoever is under it. Hands (receiver) and defense (defender) give the
+// player out of position a chance, and there is a little luck either way.
+// D chance for one defender standing at (qx,qy) when the disc reaches (px,py) moving along (ux,uy).
+function posD(rp,dp,qx,qy,px,py,ux,uy,rAlong,rcvDist,huck,late){
+  const dx=qx-px,dy=qy-py,dd=Math.hypot(dx,dy);
+  // he has to be able to get a hand on the disc where it's caught; the chance fades at the edge of his reach
+  const reach=.9+dp.def*.05+dp.jmp*.03+(late?.4:0);
+  const w=clamp((reach+.4-dd)/.8,0,1);
+  if(w<=0)return 0;
+  let adv; // positive: the receiver has position (he's between the disc and the defender)
+  if(huck)adv=(dd-rcvDist)*1.2;
+  else adv=(dx*ux+dy*uy-rAlong)*1.3+(dd-rcvDist)*.4;
+  const hold=huck?rp.jmp*.5+rp.hnd*.5:rp.hnd,take=huck?dp.jmp*.5+dp.def*.5:dp.def;
+  return w*clamp(1/(1+Math.exp(2.6*adv+.25*(hold-take))),.04,.96);
+}
+function contest(rcv,px,py,ux,uy,rcvDist,huck,late,skip){
+  const rAlong=(rcv.x-px)*ux+(rcv.y-py)*uy;
+  let best=null,bestP=0;
+  for(const d of G.def){
+    if(skip&&skip(d))continue;
+    const pD=posD(rcv.p,d.p,d.x,d.y,px,py,ux,uy,rAlong,rcvDist,huck,late);
+    if(pD>bestP){bestP=pD;best=d}
+  }
+  return{pD:bestP,by:best};
+}
+// What the ring under a receiver shows: the D chance if you threw it to him right now.
+// It predicts the race: you lead him, the disc flies, his defender reacts and runs at the same
+// spot. It also turns red if a defender is standing in the lane on a flat throw.
+// Where to put the disc so it arrives where he'll be: lead him by the flight time.
+function leadSpot(h,e){
+  let ax=e.x,ay=e.y,T=0,huck=false;
+  for(let i=0;i<3;i++){
+    const L=Math.max(1,dist(h.x,h.y,ax,ay));huck=L>30;
+    T=L/(huck?14+h.p.thr*.55:19+h.p.thr*.9)+(huck?.35:0);
+    ax=clamp(e.x+e.vx*T,0,FL);ay=clamp(e.y+e.vy*T,1,FW-1);
+  }
+  return{ax,ay,T,huck};
+}
+function openness(e){
+  // Play the throw out in a quick private simulation, with the same movement rules as the real
+  // one: you lead him, he attacks the disc, his defender reacts and chases. Report the D chance.
+  const h=G.holder>=0?G.off[G.holder]:null;if(!h)return 0;
+  const{ax,ay,T,huck}=leadSpot(h,e);
+  const L=Math.max(1,dist(h.x,h.y,ax,ay));
+  const f={type:huck?'huck':'flat',fx:h.x,fy:h.y,tx:ax,ty:ay,t:0,T,dist:L,ux:(ax-h.x)/L,uy:(ay-h.y)/L,apex:huck?2.5+L*.11:0};
+  const od=G.def[e.idx];
+  const r={x:e.x,y:e.y,vx:e.vx,vy:e.vy,speed:e.speed,p:e.p,tx:ax,ty:ay};
+  const d={x:od.x,y:od.y,vx:od.vx,vy:od.vy,speed:od.speed,p:od.p};
+  // everyone else keeps moving with the man he guards
+  const others=G.def.filter(q=>q!==od&&q.idx!==G.holder).map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,p:q.p}));
+  let delay=clamp(.24-od.p.def*.014,.08,.22);
+  const dt=1/60,end=T+(huck?.28:.36);
+  for(f.t=dt;f.t<=end;f.t+=dt){
+    const m=meetPoint(r,f);r.tx=m[0];r.ty=m[1];
+    steer(r,r.tx,r.ty,1.12,dt,60,25);
+    if(delay>0)delay-=dt;else steer(d,r.tx,r.ty,1.08,dt,55,9);
+    r.x+=r.vx*dt;r.y+=r.vy*dt;d.x+=d.vx*dt;d.y+=d.vy*dt;
+    if(f.t<.7)for(const q of others){q.x+=q.vx*dt;q.y+=q.vy*dt}
+    const c=discAt(f,f.t);
+    if(c.z<=0)return .95;
+    if(f.t<.07)continue;
+    for(const q of others)if(c.z<=1.95+q.p.jmp*.09&&dist(q.x,q.y,c.x,c.y)<.68+q.p.def*.035)return .75;
+    if(c.z<=1.95+d.p.jmp*.09&&dist(d.x,d.y,c.x,c.y)<.68+d.p.def*.035)return .8;
+    const rd=dist(r.x,r.y,c.x,c.y);
+    if(c.z<=1.9+r.p.jmp*.09&&rd<1.15+r.p.hnd*.03+(c.late?.65:0)){
+      const rAlong=(r.x-c.x)*f.ux+(r.y-c.y)*f.uy;
+      let p=posD(r.p,d.p,d.x,d.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late);
+      for(const q of others)p=Math.max(p,posD(r.p,q.p,q.x,q.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late));
+      return p;
+    }
+  }
+  return .95;
+}
+// Who goes for it: the teammate who will be closest to the spot when the disc gets there,
+// judged by where everyone is running, not where they are standing.
+function chooseReceiver(tx,ty,ex=G.holder,T){
+  if(T==null){const h=G.holder>=0?G.off[G.holder]:null;const L=h?dist(h.x,h.y,tx,ty):15;T=L/22+(L>30?.35:0)}
   let best=null,bt=1e9;
-  for(const e of G.off){if(e.idx===ex)continue;const t=dist(e.x,e.y,tx,ty)/e.speed;if(t<bt){bt=t;best=e}}
+  for(const e of G.off){
+    if(e.idx===ex)continue;
+    const k=Math.min(T,1.6),px=e.x+e.vx*k,py=e.y+e.vy*k;
+    const t=dist(px,py,tx,ty)/e.speed+dist(e.x,e.y,tx,ty)/e.speed*.15;
+    if(t<bt){bt=t;best=e}
+  }
   return best;
 }
 
@@ -782,11 +867,9 @@ function throwDisc(type,ax,ay,ai){
   }
   const L=Math.hypot(tx-h.x,ty-h.y)||1;
   G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower};
-  // separation each receiver had from his defender at the release: what the rings showed
-  G.flight.sep0=G.off.map(e=>dist(e.x,e.y,G.def[e.idx].x,G.def[e.idx].y));
   G.holder=-1;G.phase='flight';
   h.state='clear';h.timer=1;
-  const rcv=chooseReceiver(tx,ty,thrower);
+  const rcv=chooseReceiver(tx,ty,thrower,T);
   G.flight.rcv=rcv?rcv.idx:-1;
   if(rcv){
     const[mx,my]=meetPoint(rcv,G.flight);
@@ -822,8 +905,6 @@ function updateFlight(dt){
   for(const e of G.def){
     if(f.touched.has(e))continue;
     if(e.idx===f.thrower&&f.t<.3)continue;
-    // the receiver's own defender makes his play at the catch (below), not by running through the lane
-    if(e.state==='chase'&&e.idx!==f.thrower&&f.sep0&&G.off[e.idx].state==='chase')continue;
     if(z>1.95+e.p.jmp*.09)continue;
     const r=.68+e.p.def*.035+(late?.4:0),dd=dist(e.x,e.y,x,y);
     if(dd<r)contacts.push({e,dd});
@@ -833,42 +914,24 @@ function updateFlight(dt){
   const offC=contacts.find(c=>c.e.side==='off'),defC=contacts.find(c=>c.e.side==='def');
   const thrP=G.off[f.thrower].p;
   if(offC&&defC&&f.type==='huck'){
-    const o=offC.e.p,d=defC.e.p;
-    const pO=clamp(.5+(o.jmp-d.jmp)*.07+(o.hnd-5)*.02+(defC.dd-offC.dd)*.15,.15,.85);
-    if(Math.random()<pO)doCatch(offC.e,f,'SKYED!');
+    // both under it: a sky battle, won by whoever is better positioned underneath and jumps higher
+    const pD=contest(offC.e,x,y,f.ux,f.uy,offC.dd,true,late,d=>d!==defC.e).pD;
+    if(Math.random()>=pD)doCatch(offC.e,f,'SKYED!');
     else turnover({label:'SKYED!',x,y,by:defC.e,kind:'d',f});
     maybeInjury(Math.random()<.5?offC.e:defC.e,.04);
     return;
   }
   const c=contacts[0];f.touched.add(c.e);
   if(c.e.side==='def'){
-    const pD=clamp(.2+c.e.p.def*.04-thrP.thr*.015+(late?-.08:0),.1,.65);
+    // he got to it first, so he's in front of the throw: usually a D
+    const pD=clamp(.72+(c.e.p.def-thrP.thr)*.03+(late?-.1:0),.45,.9);
     if(Math.random()<pD){turnover({label:late?'LAYOUT D':'D!',x,y,by:c.e,kind:'d',f});if(late)maybeInjury(c.e,.05)}
   }else{
-    // A guarded receiver can't just pull it in: the closest defender gets a play on the disc.
-    // Inside about a yard and a half it's usually a D. Three yards of separation and it's clean.
-    let nd=null,ndd=1e9;
-    for(const d of G.def){if(f.touched.has(d)||(d.idx===f.thrower&&f.t<.4))continue;const q=dist(d.x,d.y,x,y);if(q<ndd){ndd=q;nd=d}}
-    {
-      // 1) His own defender: mostly decided by separation at the release (the ring you saw),
-      //    then by how close the defender got by the time the disc arrived.
-      // 2) Anyone else's defender only gets it if he's practically standing on the catch.
-      const huck=f.type==='huck',rp=c.e.p,ownD=G.def[c.e.idx];
-      const skill=dp=>((huck?dp.jmp*.6+dp.def*.4:dp.def*.65+dp.spd*.35)-(huck?rp.jmp*.5+rp.hnd*.5:rp.hnd*.5+rp.spd*.5))*.04;
-      let pOwn=0,pOther=0;
-      if(ownD&&!f.touched.has(ownD)&&!(ownD.idx===f.thrower&&f.t<.4)){
-        const dOwn=dist(ownD.x,ownD.y,x,y),s0=f.sep0?f.sep0[c.e.idx]:dOwn;
-        // red ring (under 1.8 yd): he's right there. Yellow: risky. Green (3+ yd): clean.
-        const cover=s0<1.8?clamp(.9-.25*(s0-1),.7,.9):clamp(.7-.54*(s0-1.8),0,.7);
-        const near=clamp((3.5-dOwn)/2.5,0,1);
-        pOwn=clamp(cover*(.8+.2*near)+skill(ownD.p)*Math.min(1,cover*2)+(late?.06:0),0,.92);
-      }
-      if(nd&&nd!==ownD)pOther=clamp(clamp((1.6-ndd)/1.2,0,1)*.7+skill(nd.p),0,.8);
-      if(Math.random()<pOwn){turnover({label:huck?'SKYED!':'D!',x,y,by:ownD,kind:'d',f});return}
-      if(Math.random()<pOther){turnover({label:huck?'SKYED!':'D!',x,y,by:nd,kind:'d',f});return}
-    }
-    const contested=ndd<2;
-    let pc=.95+c.e.p.hnd*.005-(late?.15:0)-(contested?.05:0)-(f.type==='huck'?.03:0);
+    const huck=f.type==='huck';
+    const{pD,by}=contest(c.e,x,y,f.ux,f.uy,c.dd,huck,late,d=>f.touched.has(d)||(d.idx===f.thrower&&f.t<.4));
+    if(by&&Math.random()<pD){turnover({label:huck?'SKYED!':late?'LAYOUT D':'D!',x,y,by,kind:'d',f});if(late)maybeInjury(by,.05);return}
+    // he won the position battle; now he just has to hang on
+    let pc=.95+c.e.p.hnd*.005-(late?.15:0)-(pD>.3?.05:0)-(huck?.03:0);
     pc=clamp(pc,.35,.985);
     if(Math.random()<pc){doCatch(c.e,f,late?'LAYOUT!':null);if(late)maybeInjury(c.e,.05)}
     else turnover({label:'DROP',x,y,kind:'drop',recv:c.e,f});
@@ -942,13 +1005,15 @@ function liveLogic(dt){
       const h=G.off[G.holder];let best=null,bs=-1e9;
       for(const e of G.off){
         if(e.idx===G.holder)continue;
-        const d=G.def[e.idx],sep=dist(e.x,e.y,d.x,d.y),dd=dist(e.x,e.y,h.x,h.y);
-        if(dd>45)continue;
-        const sc=sep*1.5+(e.x-h.x)*.08+(e.state==='scut'||e.state==='cut'?1:0);
-        if(sc>bs){bs=sc;best=e;best.sep=sep}
+        const o=openness(e),dd=dist(e.x,e.y,h.x,h.y);
+        if(dd>50||dd<5)continue;
+        const fwd=e.x-h.x;
+        if(fwd<0&&stallNum()<6)continue; // dump only when the stall is getting up
+        const sc=-o*6+fwd*.05;
+        if(sc>bs){bs=sc;best=e;best.open=o}
       }
       // wait for someone to get open, unless the stall is getting high
-      if(best&&(best.sep>=2.6||stallNum()>=7)){const ax=best.x+best.vx*.55,ay=best.y+best.vy*.55;throwDisc(dist(ax,ay,h.x,h.y)>30?'huck':'flat',ax,ay,true);G.demoTimer=rand(.9,1.8)}
+      if(best&&(best.open<.2||stallNum()>=8)){const{ax,ay,huck}=leadSpot(h,best);throwDisc(huck?'huck':'flat',ax,ay,true);G.demoTimer=rand(.9,1.8)}
       else G.demoTimer=.2;
     }
   }
@@ -1237,8 +1302,7 @@ function drawGroundLayer(){
   if(!(G.phase==='live'||G.phase==='ready')||G.demo)return;
   for(const e of G.off){
     if(e.idx===G.holder)continue;
-    const d=G.def[e.idx],sep=dist(e.x,e.y,d.x,d.y);
-    const c=sep>=3?PAL.sea:sep>=1.8?PAL.gold:PAL.red;
+    const o=openness(e),c=o<.2?PAL.sea:o<.5?PAL.gold:PAL.red;
     const X=sx(e.x),Y=sy(e.y);
     ctx.globalAlpha=.9;
     rect(X-9,Y-1,18,2,c);rect(X-11,Y+1,3,2,c);rect(X+8,Y+1,3,2,c);rect(X-9,Y+3,18,2,c);
@@ -1402,7 +1466,8 @@ function showHow(back){
       <ul>
         <li>You control whoever holds the disc. Throwers can't run, so every point is a chain of passes into the end zone on the right.</li>
         <li>Your cutters run a vertical stack: one at a time, front of the stack cuts under, back of the stack goes deep, then they clear out and rejoin at the back. Watch for the jab step: that's the next cutter going.</li>
-        <li>Rings under teammates show separation: <b class="good">green</b> is open, <b class="gold">yellow</b> is risky, <b class="bad">red</b> means the defender is right there and will probably get the D. Lead cutters into space away from their defender.</li>
+        <li>Catches come down to position. If the receiver is between the disc and his defender, he catches it. If the defender is between the disc and the receiver, it's usually a D. On hucks, whoever is under it wins. Good hands or good defense can still steal one from a bad spot.</li>
+        <li>Rings under teammates show that position: <b class="good">green</b> means he's in front of his man or nobody's near, <b class="gold">yellow</b> is contested, <b class="bad">red</b> means his defender is between him and you. Lead cutters into space on their side of the defender.</li>
         <li>The <b class="bad">red wedge</b> is the mark. Throws into it can get point-blocked. Fake first, or throw to the open side.</li>
         <li>The marker counts to ten. Throw before the stall, and expect a dump cut from your handler around 6.</li>
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
@@ -2054,7 +2119,7 @@ function boot(data){
 }
 window.claude?.hot?.snapshot?.(()=>({career:loadCareer(),coach:loadCoach()}));
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
-window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub,step:dt=>update(dt)};
+window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub,step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e)};
 })();
 </script>
 </body>
