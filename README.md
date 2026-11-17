@@ -10,6 +10,7 @@ Open `index.html` in a browser to play. It's a single file with no build step. `
 - **Offense:** your cutters run a vertical stack with real discipline. One cutter goes at a time: the front of the stack cuts under, the back goes deep, and each cutter jab-steps, cuts, then clears out of the lane and rejoins at the back. The next cutter waits until the lane is clear.
 - **Separation matters:** the ring under each receiver shows separation from their defender. Throw to a covered (red) receiver and the defender usually gets the D; tight (yellow) is risky; open (green) is a clean catch. Receivers attack the disc instead of waiting for it.
 - **Star ratings:** most players are 1–3 stars, good programs have a few 4-star players, and 5-star players are rare (about two in the whole league).
+- **Head coach:** run a whole program, Retro Bowl style, for as many seasons as you like. Win games to earn coaching credits (CC), then spend them on +1 upgrades for any player (up to that player's ceiling), on facilities (training center, conditioning, recruiting network), and on signing recruits each offseason when your seniors graduate. You set the O-line and D-line that every line call starts from.
 - **Career:** make a player (Handler, Cutter or Defender), join a school and play four seasons. You get an 8-game schedule, the Pacific Championships bracket, XP, level-ups and skill points to spend on Throws, Speed, Hands, Hops, Defense and Stamina.
 
 The schools are real and wear their actual school colors. Every player is generated and fictional.

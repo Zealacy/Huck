@@ -145,6 +145,29 @@ input{font-family:var(--font-body);font-size:calc(var(--u)*17);background:var(--
 .badge{display:inline-block;font-family:var(--font-display);font-size:calc(var(--u)*11);background:var(--gold);color:var(--ink);padding:calc(var(--u)*2) calc(var(--u)*6)}
 .levelup{font-family:var(--font-display);color:var(--gold);font-size:calc(var(--u)*16)}
 .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:calc(var(--u)*16)}
+/* head coach */
+.hub-grid.coach{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr)}
+table.roster{font-size:calc(var(--u)*12.5)}
+table.roster td{padding:calc(var(--u)*1) calc(var(--u)*4)}
+table.roster th{padding:calc(var(--u)*2) calc(var(--u)*4)}
+table.roster .stars{font-size:calc(var(--u)*11);letter-spacing:0;white-space:nowrap}
+tr.click{cursor:pointer}
+tr.click:hover td,tr.click:focus-visible td{background:var(--panel-2)}
+tr.click:focus-visible{outline:calc(var(--u)*2) solid var(--gold)}
+td.pos{font-family:var(--font-display);font-size:calc(var(--u)*11);color:var(--sea)}
+.stars.ceil{color:var(--line)}
+.ccbadge{font-family:var(--font-display);font-size:calc(var(--u)*14);background:var(--gold);color:var(--ink);padding:calc(var(--u)*6) calc(var(--u)*10);white-space:nowrap}
+.tagO,.tagD{font-family:var(--font-display);font-size:calc(var(--u)*10);padding:0 calc(var(--u)*3);margin-right:calc(var(--u)*2);color:var(--ink)}
+.tagO{background:var(--sea)}.tagD{background:var(--sunset)}
+.small{font-size:calc(var(--u)*12)}
+.tog{font-family:var(--font-display);font-size:calc(var(--u)*11);background:var(--panel-2);color:var(--dim);border:0;padding:calc(var(--u)*3) calc(var(--u)*10);cursor:pointer}
+.tog.o.on{background:var(--sea);color:var(--ink)}.tog.d.on{background:var(--sunset);color:var(--ink)}
+.tog:focus-visible{outline:calc(var(--u)*2) solid var(--gold)}
+.fac-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(var(--u)*12)}
+.fac{background:var(--ink);padding:calc(var(--u)*12);display:flex;flex-direction:column;gap:calc(var(--u)*8);min-width:0}
+.fac .btn{margin-top:auto;align-self:flex-start}
+.lvl{display:grid;grid-template-columns:repeat(5,1fr);gap:calc(var(--u)*3);height:calc(var(--u)*10)}
+.lvl span{background:var(--panel-2)}.lvl span.on{background:var(--gold)}
 /* line calls */
 .lcpanel{width:calc(var(--u)*900)}
 .lc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(var(--u)*4) calc(var(--u)*12)}
@@ -340,6 +363,7 @@ window.addEventListener('keydown',e=>{
   if((k==='escape'||k==='p')&&G&&!G.demo&&G.phase!=='over'&&G.phase!=='idle'){e.preventDefault();togglePause();return}
   if(k==='enter'){const b=ui.querySelector('[data-primary]');if(b&&!b.disabled){e.preventDefault();b.click()}return}
   if(k==='1'||k==='2'){const b=ui.querySelector(`[data-key="${k}"]`);if(b){e.preventDefault();b.click()}}
+  if(k==='arrowleft'||k==='arrowright'){const b=ui.querySelector(k==='arrowleft'?'[data-prev]':'[data-next]');if(b){e.preventDefault();b.click()}}
 });
 window.addEventListener('keyup',e=>{if(e.key==='Shift')input.shift=false});
 window.addEventListener('blur',()=>{input.shift=false;if(G&&!G.demo&&!G.paused&&['live','flight','ready'].includes(G.phase))togglePause()});
@@ -374,6 +398,7 @@ function newMatch(o){
   G.nextReceiver=G.firstReceiver;
   G.meCol={j:me.team.c1,s:me.team.c2};
   G.oppCol=colorClose(me.team.c1,opp.team.c1)?{j:'#ece6d6',s:opp.team.c1}:{j:opp.team.c1,s:opp.team.c2};
+  G.savedLines=o.savedLines||null;G.cond=o.cond||1;
   G.en={};G.pp={};G.hurt={};G.load=0;G.timeouts=2;G.autoLines=!G.demo&&AUTO_LINES;G.lastLine=null;G.toasts=[];
   for(const p of me.ro.concat(opp.ro))G.en[p.id]=100;
   for(const p of me.ro)G.stats[p.id]={g:0,a:0,c:0,ct:0,to:0,d:0};
@@ -395,6 +420,14 @@ function coachPick(ro,kind){
   const offS=p=>p.thr*.4+p.hnd*.3+p.spd*.3,defS=p=>p.def*.5+p.spd*.25+p.jmp*.25;
   const sc=p=>kind==='O'?offS(p)*en(p)**2:kind==='D'?defS(p)*en(p)**2:ovr(p)*en(p)**3;
   const avail=ro.filter(p=>!G.hurt[p.id]);
+  // head coach mode: start from your saved line, swapping out anyone hurt or gassed
+  if(G.savedLines&&ro===G.me.ro&&(kind==='O'||kind==='D')&&(G.savedLines[kind]||[]).length){
+    const byId=new Map(ro.map(p=>[p.id,p]));
+    let line=G.savedLines[kind].map(id=>byId.get(id)).filter(p=>p&&!G.hurt[p.id]&&(G.en[p.id]??100)>=35).slice(0,7);
+    line=line.concat(avail.filter(p=>!line.includes(p)).sort((a,b)=>sc(b)-sc(a)).slice(0,7-line.length));
+    if(line.length<7)line=line.concat(ro.filter(p=>!line.includes(p)).slice(0,7-line.length));
+    return line;
+  }
   const hs=avail.filter(p=>p.pos==='H').sort((a,b)=>sc(b)-sc(a)).slice(0,kind==='O'?3:2);
   let line=hs.concat(avail.filter(p=>!hs.includes(p)).sort((a,b)=>sc(b)-sc(a)).slice(0,7-hs.length));
   const me=G.meId&&ro.find(p=>p.id===G.meId);
@@ -407,10 +440,11 @@ function coachPick(ro,kind){
 }
 function endPointFatigue(){
   const on=new Set(G.myLine.concat(G.oppLine).map(p=>p.id));
+  const mine=new Set(G.me.ro.map(p=>p.id)),cv=(G.cond||1)-1;
   for(const p of G.me.ro.concat(G.opp.ro)){
-    const sta=p.sta||5;
-    if(on.has(p.id))G.en[p.id]=clamp(G.en[p.id]-(10+G.load)*(1.3-sta*.06),0,100);
-    else G.en[p.id]=clamp(G.en[p.id]+20+sta*1.2,0,100);
+    const sta=p.sta||5,c=mine.has(p.id)?cv:0;
+    if(on.has(p.id))G.en[p.id]=clamp(G.en[p.id]-(10+G.load)*(1.3-sta*.06)*(1-.06*c),0,100);
+    else G.en[p.id]=clamp(G.en[p.id]+20+sta*1.2+2*c,0,100);
   }
   for(const id of Object.keys(G.hurt))if(--G.hurt[id]<=0)delete G.hurt[id];
   G.load=0;
@@ -1049,7 +1083,7 @@ function togglePause(){
     <button class="btn" data-primary id="resume">Resume <span class="kbd">Esc</span></button>
     <button class="btn alt" id="pauto">Coach calls lines: ${G.autoLines?'On':'Off'}</button>
     <button class="btn alt" id="phow">How to play</button>
-    <button class="btn alt" id="pquit">${G.career?'Forfeit and return to career':'Quit to title'}</button></div></div>`;
+    <button class="btn alt" id="pquit">${G.career?'Forfeit this game':'Quit to title'}</button></div></div>`;
   document.getElementById('resume').addEventListener('click',togglePause);
   document.getElementById('pauto').addEventListener('click',e=>{G.autoLines=!G.autoLines;setAutoLines(G.autoLines);e.currentTarget.textContent=`Coach calls lines: ${G.autoLines?'On':'Off'}`});
   document.getElementById('phow').addEventListener('click',()=>showHow(()=>{G.paused=false;togglePause()}));
@@ -1305,20 +1339,25 @@ function startDemo(){
 }
 function showTitle(){
   if(!G||!G.demo)startDemo();
-  const C=loadCareer();
+  const C=loadCareer(),K=loadCoach();
   show(`<div class="screen clear"><div class="titlebox">
     <h1 class="logo"><span class="a">PACIFIC</span><span class="b">HUCK</span></h1>
     <p class="tag">High school ultimate, from Puget Sound to the Bay</p>
     <div class="menu">
       ${C?`<button class="btn" id="cont" data-primary>Continue: ${esc(C.me.last)}, ${GRADE[C.me.grade]||'Senior'}</button>`:''}
-      <button class="btn ${C?'alt':''}" id="newc" ${C?'':'data-primary'}>New career</button>
+      ${K?`<button class="btn ${C?'alt':''}" id="contk" ${C?'':'data-primary'}>Coach: ${esc(TEAM(K.teamId).name)}, year ${K.year}</button>`:''}
+      <button class="btn ${C||K?'alt':''}" id="newc" ${C||K?'':'data-primary'}>New career</button>
+      <button class="btn alt" id="newk">${K?'New program':'Head coach'}</button>
       <button class="btn alt" id="quick">Quick game</button>
       <button class="btn alt" id="how">How to play</button>
     </div>
     <p class="foot">Built for laptops: mouse or trackpad to aim, keyboard for the rest. <span class="kbd">M</span> mutes.</p>
   </div></div>`);
   on('cont',()=>{CAR=C;showHub()});
-  on('newc',()=>showCreate());
+  on('newc',()=>C?confirmScreen('Start a new career?',`This replaces ${esc(pname(C.me))}'s career at ${esc(TEAM(C.teamId).name)}.`,'Start a new career',showCreate,showTitle):showCreate());
+  on('contk',()=>{CAR=K;showCoachHub()});
+  on('newk',()=>{const go=()=>showTeamPick('Head coach','Pick your program',null,startCoach,showTitle);
+    K?confirmScreen('Start a new program?',`This replaces your ${esc(TEAM(K.teamId).name)} program (year ${K.year}, ${K.titles} title${K.titles===1?'':'s'}).`,'Start a new program',go,showTitle):go()});
   on('quick',()=>showTeamPick('Quick game','Pick your team',null,id=>showTeamPick('Quick game','Pick the opponent',id,opp=>quickPregame(id,opp))));
   on('how',()=>showHow(showTitle));
 }
@@ -1364,7 +1403,7 @@ function starRows(ro){return topStars(ro).map(p=>`<div><span class="stars">${sta
 function pregame(o){
   // o: {me:{team,ro},opp:{team,ro},home,label,meId,onEnd,career,back}
   clearTimers();
-  newMatch({me:o.me,opp:o.opp,home:o.home,career:o.career,meId:o.meId,onEnd:o.onEnd,label:o.label});
+  newMatch({me:o.me,opp:o.opp,home:o.home,career:o.career,meId:o.meId,onEnd:o.onEnd,label:o.label,savedLines:o.savedLines,cond:o.cond});
   G.phase='idle';
   setupPossession(25,20,'');G.phase='idle';
   const v=G.venue;
@@ -1410,22 +1449,22 @@ function migrate(c){
   for(const t of TEAMS){
     if(!c.rosters[t.id]){c.prestige[t.id]=t.elite?5:randi(1,5);c.rosters[t.id]=genRoster(Math.random,c.prestige[t.id],t.elite)}
     // saves from before deeper rosters and stamina
-    const ro=c.rosters[t.id],used=new Set(ro.map(p=>p.num).concat(t.id===c.teamId?[c.me.num]:[]));
+    const ro=c.rosters[t.id],used=new Set(ro.map(p=>p.num).concat(t.id===c.teamId&&c.me?[c.me.num]:[]));
     for(const p of ro){
       if(p.sta==null)p.sta=clamp(Math.round((p.thr+p.spd+p.hnd+p.jmp+p.def)/5+rand(-1,1)),1,10);
       if(p.tier==null)p.tier=ovr(p)>=8?2:ovr(p)>=6.8?1:0;
       if(p.pot==null)setPot(p,Math.random);
     }
-    while(ro.length<(t.id===c.teamId?13:14)){const p=genPlayer(Math.random,ROSTER_POS[ro.length]||'C',0,used);shapeTier(p,0,Math.random);setPot(p,Math.random);ro.push(p)}
+    while(ro.length<(t.id===c.teamId&&c.mode!=='coach'?13:14)){const p=genPlayer(Math.random,ROSTER_POS[ro.length]||'C',0,used);shapeTier(p,0,Math.random);setPot(p,Math.random);ro.push(p)}
     if(c.season&&c.season.standings&&!c.season.standings[t.id])c.season.standings[t.id]={w:0,l:0,pf:0,pa:0};
   }
   return c;
 }
-function saveCareer(){try{if(CAR)localStorage.setItem(SAVE_KEY,JSON.stringify(CAR));else localStorage.removeItem(SAVE_KEY)}catch(e){}}
+function saveCareer(){try{if(CAR)localStorage.setItem(CAR.mode==='coach'?COACH_KEY:SAVE_KEY,JSON.stringify(CAR));else localStorage.removeItem(SAVE_KEY)}catch(e){}}
 const xpNeed=l=>90+30*(l-1);
 const upCost=r=>r<=3?2:r-1;
 const START={H:{thr:6,spd:3,hnd:4,jmp:3,def:3,sta:3},C:{thr:3,spd:5,hnd:5,jmp:3,def:3,sta:3},D:{thr:3,spd:4,hnd:3,jmp:4,def:5,sta:3}};
-function myRoster(){return[CAR.me].concat(CAR.rosters[CAR.teamId])}
+function myRoster(){return CAR.mode==='coach'?CAR.rosters[CAR.teamId]:[CAR.me].concat(CAR.rosters[CAR.teamId])}
 function rosterOf(id){return id===CAR.teamId?myRoster():CAR.rosters[id]}
 
 function showCreate(){
@@ -1479,7 +1518,7 @@ function newSeason(){
   const EV={WA:['Rainy City Invite','Cascade Cup','Puget Sound Showdown'],OR:['Rose City Classic','Willamette Weekend','Track Town Classic'],CA:['Golden Gate Open','Bay Bash','Redwood Shootout']};
   CAR.season={schedule:opps.map((t,i)=>({opp:t.id,home:i%2===0,event:pick(EV[t.st]),res:null})),week:0,
     standings:Object.fromEntries(TEAMS.map(t=>[t.id,{w:0,l:0,pf:0,pa:0}])),phase:'reg',bracket:null,round:0,seeds:null,finish:null,champ:null,
-    stats:{gp:0,w:0,l:0,g:0,a:0,d:0,c:0,ct:0,to:0},awards:[]};
+    stats:{gp:0,w:0,l:0,g:0,a:0,d:0,c:0,ct:0,to:0},awards:[],pstats:{}};
 }
 function simScore(a,b){
   const ra=teamRating(rosterOf(a))+(CAR.prestige[a]-3)*.1,rb=teamRating(rosterOf(b))+(CAR.prestige[b]-3)*.1;
@@ -1534,7 +1573,22 @@ function nextGame(){
   }
   return null;
 }
+function recordResult(res,ng){
+  const S=CAR.season;
+  if(ng.kind==='reg'){
+    S.schedule[S.week].res=[res.us,res.them];addStanding(CAR.teamId,ng.opp,res.us,res.them);simWeek([CAR.teamId,ng.opp]);S.week++;
+    if(S.week>=S.schedule.length)startPlayoffs();
+  }else{
+    const r=S.bracket[S.round],m=ng.m;
+    m.res=m.a===CAR.teamId?[res.us,res.them]:[res.them,res.us];m.win=res.win?CAR.teamId:ng.opp;
+    for(const mm of r)if(!mm.win)simMatch(mm);
+    if(!res.win){S.finish=['Lost in the quarterfinal','Lost in the semifinal','Runner-up'][S.round];S.phase='done';finishBracket();endSeasonAwards()}
+    else if(S.round===2){S.finish='Pacific Champions';S.champ=CAR.teamId;S.phase='done';CAR.titles++;endSeasonAwards()}
+    else{S.round++;buildNextRound()}
+  }
+}
 function endSeasonAwards(){
+  if(CAR.mode==='coach'){coachSeasonEnd();return}
   const S=CAR.season,st=S.stats,o=ovr(CAR.me),pg=st.gp?(st.g+st.a+st.d)/st.gp:0;
   const aw=[];
   if(S.champ===CAR.teamId)aw.push('Pacific Champions');
@@ -1561,18 +1615,7 @@ function careerGameEnd(res){
   const total=lines.reduce((t,l)=>t+l[1],0);
   CAR.xp+=total;let ups=0;
   while(CAR.xp>=xpNeed(CAR.level)){CAR.xp-=xpNeed(CAR.level);CAR.level++;CAR.sp+=3;ups++}
-  // results
-  if(ng.kind==='reg'){
-    S.schedule[S.week].res=[res.us,res.them];addStanding(CAR.teamId,ng.opp,res.us,res.them);simWeek([CAR.teamId,ng.opp]);S.week++;
-    if(S.week>=S.schedule.length)startPlayoffs();
-  }else{
-    const r=S.bracket[S.round],m=ng.m;
-    m.res=m.a===CAR.teamId?[res.us,res.them]:[res.them,res.us];m.win=res.win?CAR.teamId:ng.opp;
-    for(const mm of r)if(!mm.win)simMatch(mm);
-    if(!res.win){S.finish=['Lost in the quarterfinal','Lost in the semifinal','Runner-up'][S.round];S.phase='done';finishBracket();endSeasonAwards()}
-    else if(S.round===2){S.finish='Pacific Champions';S.champ=CAR.teamId;S.phase='done';CAR.titles++;endSeasonAwards()}
-    else{S.round++;buildNextRound()}
-  }
+  recordResult(res,ng);
   saveCareer();
   if(ups)SFX.level();
   const me=TEAM(CAR.teamId),op=TEAM(ng.opp);
@@ -1696,6 +1739,280 @@ function showGraduation(){
   on('grad',()=>{CAR=null;saveCareer();showCreate()});
 }
 
+
+// ---------------------------------------------------------------- head coach mode
+// Run the whole program: earn coaching credits, upgrade any player up to his ceiling,
+// set your lines, build facilities, and recruit a freshman class every offseason.
+const COACH_KEY='pacific-huck-coach-v1';
+function loadCoach(){try{const s=localStorage.getItem(COACH_KEY);return s?migrate(JSON.parse(s)):null}catch(e){return null}}
+const YR={9:'Fr',10:'So',11:'Jr',12:'Sr'};
+const starsAt=o=>o>=8?5:o>=6.8?4:o>=5.6?3:o>=4.4?2:1;
+const ccCost=r=>r<=4?1:r<=6?2:r<=8?3:4;
+const facCost=lv=>lv*5;
+const FAC={
+  train:{name:'Training center',does:lv=>`Returning players get ${1+lv} development rolls every offseason.`},
+  cond:{name:'Conditioning',does:lv=>lv===1?'Standard fitness. Your players tire and recover at the normal rate.':`Your players tire ${(lv-1)*6}% slower and get ${(lv-1)*2} extra energy back per point on the sideline.`},
+  scout:{name:'Recruiting network',does:lv=>`${5+lv} prospects each offseason with better odds of a high ceiling.${lv>=3?' You see each recruit’s exact ceiling.':' Ceilings show as a range until level 3.'}`},
+};
+const offScore=p=>p.thr*.4+p.hnd*.3+p.spd*.3,defScore=p=>p.def*.5+p.spd*.25+p.jmp*.25;
+function bestLine(ro,kind){
+  const sc=kind==='O'?offScore:defScore;
+  const hs=ro.filter(p=>p.pos==='H').sort((a,b)=>sc(b)-sc(a)).slice(0,kind==='O'?3:2);
+  return hs.concat(ro.filter(p=>!hs.includes(p)).sort((a,b)=>sc(b)-sc(a)).slice(0,7-hs.length));
+}
+function canUpgrade(p,a){return p[a]<10&&(ATTR.reduce((t,k)=>t+p[k],0)+1)/ATTR.length<=(p.pot||9.6)+.01}
+function confirmScreen(title,body,yes,onYes,onNo){
+  show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*480)"><h2>${esc(title)}</h2><p class="dim">${body}</p>
+    <div class="row between"><button class="btn alt" id="cno" data-primary>Keep it</button><button class="btn" id="cyes">${esc(yes)}</button></div></div></div>`);
+  on('cno',onNo);on('cyes',onYes);
+}
+function startCoach(teamId){
+  const rosters={},prestige={};
+  for(const t of TEAMS){prestige[t.id]=t.elite?5:randi(1,5);rosters[t.id]=genRoster(Math.random,prestige[t.id],t.elite)}
+  const ro=rosters[teamId];
+  CAR={v:1,mode:'coach',teamId,year:1,cc:8,fac:{train:1,cond:1,scout:1},lines:{O:bestLine(ro,'O').map(p=>p.id),D:bestLine(ro,'D').map(p=>p.id)},
+    rosters,prestige,titles:0,history:[],totals:{gp:0,w:0,l:0},awards:[],offseason:null};
+  newSeason();saveCareer();showCoachHub();
+}
+function seasonBlock(){
+  const S=CAR.season;
+  const sched=S.schedule.map((g,i)=>{const o=TEAM(g.opp);const r=g.res?`<span class="${g.res[0]>g.res[1]?'good':'bad'}">${g.res[0]>g.res[1]?'W':'L'} ${g.res[0]}–${g.res[1]}</span>`:'<span class="dim">–</span>';
+    return`<div class="${S.phase==='reg'&&i===S.week?'next':''}"><span>W${i+1}</span><span>${g.home?'vs':'at'} ${esc(o.name)}</span>${r}</div>`}).join('');
+  const po=S.bracket?S.bracket.map((r,ri)=>r.map(m=>{const mine=m.a===CAR.teamId||m.b===CAR.teamId;return`<div class="${mine&&!m.res?'next':''}"><span>${['QF','SF','F'][ri]}</span><span>${esc(TEAM(m.a).abbr)} vs ${esc(TEAM(m.b).abbr)}${m.win?` · <b class="${m.win===CAR.teamId?'good':''}">${esc(TEAM(m.win).abbr)}</b>`:''}</span><span class="dim">${m.res?`${m.res[0]}–${m.res[1]}`:''}</span></div>`}).join('')).join(''):'';
+  const ranks=sortedStandings().slice(0,8).map((id,i)=>{const s=S.standings[id];return`<tr class="${id===CAR.teamId?'me':''}"><td>${i+1}</td><td class="trunc">${esc(TEAM(id).name)}</td><td class="n">${s.w}-${s.l}</td><td class="n">${s.pf-s.pa>0?'+':''}${s.pf-s.pa}</td></tr>`}).join('');
+  return`<div class="two"><div><h3>${S.phase==='reg'?'Schedule':'Bracket'}</h3><div class="sched">${S.phase==='reg'?sched:po}</div></div>
+    <div><h3>Standings</h3><table><tbody>${ranks}</tbody></table><div class="dim small">Top 8 make the Pacific Championships.</div></div></div>`;
+}
+function showCoachHub(){
+  if(!G||!G.demo)startDemo();
+  if(CAR.offseason){showRecruiting();return}
+  const S=CAR.season,t=TEAM(CAR.teamId),ro=myRoster(),ng=nextGame(),st=S.standings[CAR.teamId];
+  const sorted=ro.slice().sort((a,b)=>('HCD'.indexOf(a.pos)-'HCD'.indexOf(b.pos))||(ovr(b)-ovr(a)));
+  const inO=new Set(CAR.lines.O),inD=new Set(CAR.lines.D);
+  const rows=sorted.map(p=>{const ps=S.pstats[p.id];
+    return`<tr class="click" tabindex="0" data-pid="${p.id}"><td class="trunc">${esc(pname(p))}</td><td class="pos">${p.pos}</td><td>${YR[p.grade]||''}</td><td class="n">${ovr(p).toFixed(1)}</td><td class="stars">${'★'.repeat(starsOf(p))}</td><td class="stars ceil">${'★'.repeat(starsAt(p.pot||ovr(p)))}</td><td>${inO.has(p.id)?'<b class="tagO">O</b>':''}${inD.has(p.id)?'<b class="tagD">D</b>':''}</td><td class="n">${ps?`${ps.g}/${ps.a}/${ps.d}`:'–'}</td></tr>`}).join('');
+  const cnt=k=>ro.filter(p=>p.pos===k).length;
+  let next;
+  if(ng){const o=TEAM(ng.opp),oro=rosterOf(ng.opp),star=topStars(oro,1)[0];
+    next=`<div class="nextbox"><div class="eyebrow">${esc(ng.label)}</div><div class="big">${ng.home?'vs':'at'} ${esc(o.name)}</div>
+      <div class="dim">OVR ${teamRating(oro).toFixed(1)} vs your ${teamRating(ro).toFixed(1)} · Their best: ${esc(pname(star))} ${'★'.repeat(starsOf(star))}</div>
+      <div class="row"><button class="btn" id="kplay" data-primary>Play game <span class="kbd">Enter</span></button></div></div>`;
+  }else{
+    next=`<div class="nextbox"><div class="eyebrow">Season ${CAR.year} complete</div><div class="big">${esc(S.finish||'')}</div>
+      <div class="dim">Champion: ${esc(TEAM(S.champ).name)}. ${S.awards.length?S.awards.map(esc).join(', ')+'.':''} Seniors graduate next, then you recruit.</div>
+      <div class="row"><button class="btn" id="koff" data-primary>Start the offseason <span class="kbd">Enter</span></button></div></div>`;
+  }
+  show(`<div class="screen"><div class="panel hub">
+    <div class="row between"><div><div class="eyebrow">Head coach · Year ${CAR.year}</div><h2>${esc(t.name)}</h2>
+      <div class="dim">${esc(t.city)}, ${t.st} · ${st.w}-${st.l} this year · ${CAR.titles} title${CAR.titles===1?'':'s'} · ${CAR.totals.w}-${CAR.totals.l} all-time</div></div>
+      <div class="row"><span class="ccbadge" title="Coaching credits">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
+    <div class="hub-grid coach">
+      <section class="card">
+        <div class="row between"><h3>Roster</h3><span class="dim small">Click a player to spend credits on him.</span></div>
+        <table class="roster"><thead><tr><th>Player</th><th>Pos</th><th>Yr</th><th class="n">OVR</th><th>Now</th><th>Ceiling</th><th>Line</th><th class="n">G/A/D</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="dim small">Team OVR ${teamRating(ro).toFixed(1)} · Depth ${depthRating(ro).toFixed(1)} · ${cnt('H')} handlers, ${cnt('C')} cutters, ${cnt('D')} defenders</div>
+      </section>
+      <section class="card">${next}${seasonBlock()}</section>
+    </div>
+  </div></div>`);
+  ui.querySelectorAll('tr[data-pid]').forEach(tr=>{const go=()=>{SFX.click();showCoachPlayer(tr.dataset.pid)};tr.addEventListener('click',go);tr.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();go()}})});
+  on('kplay',playCoachGame);on('koff',startOffseason);
+  on('klines',showLinesEditor);on('kfac',showFacilities);
+  on('kquit',()=>{saveCareer();showTitle()});
+}
+function showCoachPlayer(id){
+  const S=CAR.season,list=myRoster().slice().sort((a,b)=>('HCD'.indexOf(a.pos)-'HCD'.indexOf(b.pos))||(ovr(b)-ovr(a)));
+  const i=list.findIndex(p=>p.id===id),p=list[i];if(!p){showCoachHub();return}
+  const ps=S.pstats[p.id]||{g:0,a:0,d:0,pts:0};
+  const atCeil=!ATTR.some(a=>canUpgrade(p,a));
+  const rows=ATTR.map(a=>{const v=p[a],c=ccCost(v),can=canUpgrade(p,a),afford=CAR.cc>=c;
+    return`<div class="attr" title="${esc(ATTR_HINT[a])}"><span>${ATTR_NAME[a]}</span><div class="pips">${Array.from({length:10},(_,k)=>`<span class="${k<v?'on':''}"></span>`).join('')}</div><span class="v">${v}</span>
+    <button class="plus" data-up="${a}" ${can&&afford?'':'disabled'} aria-label="Upgrade ${ATTR_NAME[a]} for ${c} credits">${v>=10?'MAX':!can?'CEILING':`+1 · ${c}CC`}</button></div>`}).join('');
+  show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*620)">
+    <div class="row between"><div><div class="eyebrow">#${p.num} · ${POS[p.pos]} · ${GRADE[p.grade]||''}</div><h2>${esc(pname(p))}</h2></div><span class="ccbadge">${CAR.cc} CC</span></div>
+    <div class="row between"><span>Now <span class="stars">${starStr(starsOf(p))}</span> <span class="dim">OVR ${ovr(p).toFixed(1)}</span></span><span>Ceiling <span class="stars">${starStr(starsAt(p.pot||ovr(p)))}</span> <span class="dim">OVR ${(p.pot||ovr(p)).toFixed(1)}</span></span></div>
+    ${rows}
+    <p class="dim small">${atCeil?'He has reached his ceiling. Credits can’t take him further.':'Each upgrade adds one point. Costs rise with the rating, and upgrades stop at his ceiling.'} This season: ${ps.g} goals, ${ps.a} assists, ${ps.d} blocks, ${ps.pts} points played.</p>
+    <div class="row between"><div class="row"><button class="btn alt small" data-prev id="pprev">← Prev</button><button class="btn alt small" data-next id="pnext">Next →</button></div><button class="btn" id="pback" data-primary>Back to roster</button></div>
+  </div></div>`);
+  ui.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.up,c=ccCost(p[a]);if(CAR.cc>=c&&canUpgrade(p,a)){CAR.cc-=c;p[a]++;saveCareer();SFX.level();showCoachPlayer(p.id)}}));
+  on('pprev',()=>showCoachPlayer(list[(i-1+list.length)%list.length].id));
+  on('pnext',()=>showCoachPlayer(list[(i+1)%list.length].id));
+  on('pback',showCoachHub);
+}
+function showLinesEditor(){
+  const ro=myRoster().slice().sort((a,b)=>('HCD'.indexOf(a.pos)-'HCD'.indexOf(b.pos))||(ovr(b)-ovr(a)));
+  const L={O:new Set(CAR.lines.O.filter(id=>ro.some(p=>p.id===id))),D:new Set(CAR.lines.D.filter(id=>ro.some(p=>p.id===id)))};
+  const render=()=>{
+    const nh=k=>ro.filter(p=>L[k].has(p.id)&&p.pos==='H').length;
+    show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*760)">
+      <div class="row between"><div><div class="eyebrow">Lines</div><h2>Set your O-line and D-line</h2></div>
+        <div class="row"><button class="btn alt small" id="bo">Best O-line</button><button class="btn alt small" id="bd">Best D-line</button><button class="btn alt small" id="lcancel">Cancel</button><button class="btn small" id="lsave" data-primary>Save lines</button></div></div>
+      <p class="dim small"><span class="${L.O.size===7?'good':'bad'}">O-line ${L.O.size}/7</span> (${nh('O')} handlers) · <span class="${L.D.size===7?'good':'bad'}">D-line ${L.D.size}/7</span> (${nh('D')} handlers). Line calls start from these. Anyone hurt or low on energy gets swapped for the best fresh sub, and you can still change any line before a point. A player can be on both lines, but he'll tire.</p>
+      <table class="roster"><thead><tr><th>Player</th><th>Pos</th><th>Stars</th><th class="n">OFF</th><th class="n">DEF</th><th class="n">STA</th><th>O-line</th><th>D-line</th></tr></thead><tbody>
+      ${ro.map(p=>`<tr><td class="trunc">#${p.num} ${esc(pname(p))}</td><td class="pos">${p.pos}</td><td class="stars">${'★'.repeat(starsOf(p))}</td><td class="n">${offScore(p).toFixed(1)}</td><td class="n">${defScore(p).toFixed(1)}</td><td class="n">${p.sta}</td>
+        <td><button class="tog o ${L.O.has(p.id)?'on':''}" data-l="O" data-id="${p.id}" aria-pressed="${L.O.has(p.id)}">O</button></td><td><button class="tog d ${L.D.has(p.id)?'on':''}" data-l="D" data-id="${p.id}" aria-pressed="${L.D.has(p.id)}">D</button></td></tr>`).join('')}
+      </tbody></table>
+    </div></div>`);
+    ui.querySelectorAll('.tog').forEach(b=>b.addEventListener('click',()=>{const set=L[b.dataset.l],id=b.dataset.id;if(set.has(id))set.delete(id);else if(set.size<7)set.add(id);else return;SFX.click();render();const nb=ui.querySelector(`.tog[data-l="${b.dataset.l}"][data-id="${id}"]`);nb&&nb.focus()}));
+    on('bo',()=>{L.O=new Set(bestLine(ro,'O').map(p=>p.id));render()});
+    on('bd',()=>{L.D=new Set(bestLine(ro,'D').map(p=>p.id));render()});
+    on('lcancel',showCoachHub);
+    on('lsave',()=>{CAR.lines={O:[...L.O],D:[...L.D]};saveCareer();showCoachHub()});
+  };
+  render();
+}
+function showFacilities(){
+  const cards=Object.keys(FAC).map(k=>{const lv=CAR.fac[k],max=lv>=5,c=facCost(lv);
+    return`<div class="fac"><h3>${FAC[k].name}</h3><div class="lvl">${[1,2,3,4,5].map(n=>`<span class="${n<=lv?'on':''}"></span>`).join('')}</div>
+      <div class="small">Level ${lv}: ${FAC[k].does(lv)}</div>${max?'':`<div class="small dim">Level ${lv+1}: ${FAC[k].does(lv+1)}</div>`}
+      <button class="btn small" data-fac="${k}" ${max||CAR.cc<c?'disabled':''}>${max?'Maxed out':`Upgrade · ${c} CC`}</button></div>`}).join('');
+  show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*820)">
+    <div class="row between"><div><div class="eyebrow">Facilities</div><h2>Build the program</h2></div><span class="ccbadge">${CAR.cc} CC</span></div>
+    <div class="fac-grid">${cards}</div>
+    <div class="row end"><button class="btn" id="fback" data-primary>Back</button></div></div></div>`);
+  ui.querySelectorAll('[data-fac]').forEach(b=>b.addEventListener('click',()=>{const k=b.dataset.fac,c=facCost(CAR.fac[k]);if(CAR.cc>=c&&CAR.fac[k]<5){CAR.cc-=c;CAR.fac[k]++;saveCareer();SFX.level();showFacilities()}}));
+  on('fback',showCoachHub);
+}
+function playCoachGame(){
+  const ng=nextGame();
+  pregame({me:{team:TEAM(CAR.teamId),ro:myRoster()},opp:{team:TEAM(ng.opp),ro:rosterOf(ng.opp)},home:ng.home,label:ng.label,career:true,onEnd:coachGameEnd,back:showCoachHub,savedLines:CAR.lines,cond:CAR.fac.cond});
+}
+function coachGameEnd(res){
+  const S=CAR.season,ng=nextGame(),round=S.round,ro=myRoster();
+  const myR=teamRating(ro),opR=teamRating(rosterOf(ng.opp));
+  S.stats.gp++;CAR.totals.gp++;if(res.win){S.stats.w++;CAR.totals.w++}else{S.stats.l++;CAR.totals.l++}
+  for(const p of ro){const s=res.stats[p.id];if(!s)continue;const ps=S.pstats[p.id]||(S.pstats[p.id]={g:0,a:0,d:0,pts:0});ps.g+=s.g;ps.a+=s.a;ps.d+=s.d;ps.pts+=(res.pp||{})[p.id]||0}
+  recordResult(res,ng);
+  const lines=[];const add=(l,v)=>{if(v>0)lines.push([l,v])};
+  if(!res.forfeit){
+    add(res.win?'Win':'Played it out',res.win?3:1);
+    if(res.win&&opR>myR+.3)add('Upset win',1);
+    if(res.win&&res.us-res.them>=4)add('Blowout',1);
+    if(res.win&&ng.kind==='po')add('Playoff win',2);
+    if(res.win&&ng.kind==='po'&&round===2)add('Pacific Champions',6);
+  }
+  const total=lines.reduce((t,l)=>t+l[1],0);CAR.cc+=total;
+  saveCareer();
+  const me=TEAM(CAR.teamId),op=TEAM(ng.opp);
+  show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*780)">
+    <div class="eyebrow">${esc(ng.label)}</div>
+    <h2 class="${res.win?'gold':'bad'}">${res.forfeit?'Forfeit':res.win?'Win':'Loss'} · ${esc(me.abbr)} ${res.us}–${res.them} ${esc(op.abbr)}</h2>
+    <div class="two">
+      <div>${boxScore(res,ro)}</div>
+      <div class="card">
+        <h3>Coaching credits</h3>
+        <table><tbody>${lines.map(l=>`<tr><td>${esc(l[0])}</td><td class="n gold">+${l[1]} CC</td></tr>`).join('')||'<tr><td class="dim">No credits for a forfeit.</td></tr>'}</tbody></table>
+        <div class="sp">${CAR.cc} CC to spend</div>
+        <div class="dim small">Spend them on player upgrades from the roster, or on facilities.</div>
+      </div>
+    </div>
+    <div class="row end"><button class="btn" id="khub" data-primary>Back to the program <span class="kbd">Enter</span></button></div>
+  </div></div>`);
+  on('khub',showCoachHub);
+}
+function coachSeasonEnd(){
+  const S=CAR.season,st=S.stats,aw=[];
+  if(S.champ===CAR.teamId)aw.push('Pacific Champions');
+  if(sortedStandings()[0]===CAR.teamId)aw.push('Best regular-season record');
+  if(S.champ===CAR.teamId&&st.gp&&st.w/st.gp>=.8)aw.push('Pacific Coach of the Year');
+  S.awards=aw;CAR.awards=CAR.awards.concat(aw.map(a=>`${a} (year ${CAR.year})`));
+  CAR.history.push({year:CAR.year,w:st.w,l:st.l,finish:S.finish,champ:TEAM(S.champ).name});
+  // winning raises the program's profile, missing the playoffs lowers it
+  const pr=CAR.prestige,id=CAR.teamId;
+  pr[id]=clamp(pr[id]+(S.champ===id?1:S.finish&&S.finish.startsWith('Missed')?-1:0),TEAM(id).elite?4:1,5);
+}
+function genRecruits(){
+  const lv=CAR.fac.scout,used=new Set(myRoster().map(p=>p.num)),out=[];
+  for(let i=0;i<5+lv;i++){
+    const r=Math.random(),tier=r<.03+.02*lv?2:r<.18+.06*lv?1:0;
+    const p=genPlayer(Math.random,pick(['H','H','C','C','C','D']),tier,used,9);shapeTier(p,tier,Math.random);
+    p.pot=tier===0?rand(4.6,6.75):TIER_POT[tier]-Math.random()*.3;
+    for(let k=0;k<[3,4,5][tier];k++){const a=pick(ATTR);p[a]=Math.max(1,p[a]-1)} // freshmen arrive raw
+    while(ovr(p)>p.pot){const c=ATTR.filter(a=>p[a]>1);p[pick(c)]--}
+    const cs=starsAt(p.pot);
+    if(lv>=3){p.ceilLo=p.ceilHi=cs}else{p.ceilLo=clamp(cs-(Math.random()<.5?1:0),1,5);p.ceilHi=clamp(p.ceilLo+1,1,5);if(cs>p.ceilHi)p.ceilLo=(p.ceilHi=cs)-1}
+    p.cost=tier===2?9:tier===1?5:cs>=3?2:1;
+    out.push(p);
+  }
+  return out.sort((a,b)=>b.pot-a.pot);
+}
+function startOffseason(){
+  const ro=CAR.rosters[CAR.teamId],grads=ro.filter(p=>p.grade>=12);
+  CAR.rosters[CAR.teamId]=ro.filter(p=>p.grade<12);
+  CAR.offseason={grads:grads.map(p=>({name:pname(p),pos:p.pos,stars:starsOf(p)})),recruits:genRecruits(),signed:[],open:14-CAR.rosters[CAR.teamId].length};
+  saveCareer();showRecruiting();
+}
+function showRecruiting(){
+  const O=CAR.offseason,ro=myRoster();
+  const spent=O.recruits.filter(p=>O.signed.includes(p.id)).reduce((t,p)=>t+p.cost,0),left=CAR.cc-spent;
+  const cnt=k=>ro.filter(p=>p.pos===k).length+O.recruits.filter(p=>O.signed.includes(p.id)&&p.pos===k).length;
+  const top=p=>ATTR.slice().sort((a,b)=>p[b]-p[a]).slice(0,2).map(a=>`${ATTR_SHORT[a]} ${p[a]}`).join(', ');
+  const ceil=p=>p.ceilLo===p.ceilHi?'★'.repeat(p.ceilLo):`${p.ceilLo}–${p.ceilHi}★`;
+  show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*860)">
+    <div class="row between"><div><div class="eyebrow">Offseason · Recruiting</div><h2>Sign your freshman class</h2></div><span class="ccbadge">${left} CC left</span></div>
+    <p class="dim small">${O.grads.length?`Graduating: ${O.grads.map(g=>`${esc(g.name)} ${'★'.repeat(g.stars)}`).join(', ')}.`:'No seniors graduated.'} You have ${O.open} open roster spot${O.open===1?'':'s'}. Spots you leave open go to walk-ons, who rarely get past 2 stars. Freshmen arrive raw: look at the ceiling.</p>
+    <table><thead><tr><th>Prospect</th><th>Pos</th><th>Now</th><th>Ceiling</th><th>Best at</th><th class="n">Cost</th><th></th></tr></thead><tbody>
+    ${O.recruits.map(p=>{const on=O.signed.includes(p.id),can=on||(O.signed.length<O.open&&left>=p.cost);
+      return`<tr class="${on?'me':''}"><td class="trunc">${esc(pname(p))}</td><td class="pos">${p.pos}</td><td class="stars">${'★'.repeat(starsOf(p))}</td><td class="stars">${ceil(p)}</td><td class="small">${top(p)}</td><td class="n">${p.cost} CC</td>
+        <td><button class="btn small ${on?'':'alt'}" data-sign="${p.id}" ${can?'':'disabled'}>${on?'Signed':'Sign'}</button></td></tr>`}).join('')}
+    </tbody></table>
+    <div class="row between"><span>${O.signed.length}/${O.open} signed · Next year's roster: ${cnt('H')} H, ${cnt('C')} C, ${cnt('D')} D</span>
+      <button class="btn" id="rdone" data-primary>Finish recruiting <span class="kbd">Enter</span></button></div>
+  </div></div>`);
+  ui.querySelectorAll('[data-sign]').forEach(b=>b.addEventListener('click',()=>{const id=b.dataset.sign,i=O.signed.indexOf(id);if(i>=0)O.signed.splice(i,1);else O.signed.push(id);SFX.click();saveCareer();showRecruiting()}));
+  on('rdone',finishRecruiting);
+}
+function finishRecruiting(){
+  const O=CAR.offseason,ro=CAR.rosters[CAR.teamId],my=TEAM(CAR.teamId);
+  const signed=O.recruits.filter(p=>O.signed.includes(p.id));
+  CAR.cc-=signed.reduce((t,p)=>t+p.cost,0);
+  // returning players: a year older, and they develop based on your training center
+  const gains=[];
+  for(const p of ro){
+    p.grade++;const before=ovr(p);
+    for(let k=0;k<1+CAR.fac.train;k++)if(Math.random()<.7&&ovr(p)<(p.pot||9)){const c=ATTR.filter(a=>p[a]<10);if(c.length)p[pick(c)]++}
+    if(ovr(p)>before+.01)gains.push({p,d:ovr(p)-before});
+  }
+  for(const p of signed){delete p.cost;delete p.ceilLo;delete p.ceilHi;ro.push(p)}
+  const used=new Set(ro.map(q=>q.num)),walk=[];
+  while(ro.length<14){
+    const need={H:5,C:6,D:3},pos=['H','C','D'].sort((a,b)=>(need[b]-ro.filter(q=>q.pos===b).length)-(need[a]-ro.filter(q=>q.pos===a).length))[0];
+    const w=genPlayer(Math.random,pos,0,used,9);shapeTier(w,0,Math.random);w.pot=rand(4.2,5.6);
+    for(let k=0;k<3;k++){const a=pick(ATTR);w[a]=Math.max(1,w[a]-1)}
+    while(ovr(w)>w.pot){const c=ATTR.filter(a=>w[a]>1);w[pick(c)]--}
+    ro.push(w);walk.push(w);
+  }
+  // the rest of the league turns over too
+  for(const t of TEAMS){
+    if(t.id===CAR.teamId)continue;
+    const r2=CAR.rosters[t.id],u2=new Set(r2.map(q=>q.num));
+    for(let i=0;i<r2.length;i++){
+      const q=r2[i];q.grade++;
+      if(q.grade>12){u2.delete(q.num);const tier=t.elite&&Math.random()<.35||CAR.prestige[t.id]>=4&&Math.random()<.2?1:0;
+        const np=genPlayer(Math.random,q.pos,tier,u2,9);shapeTier(np,tier,Math.random);np.pot=TIER_POT[tier]-Math.random()*.3;
+        for(let k=0;k<4;k++){const a=pick(ATTR);np[a]=Math.max(1,np[a]-1)}r2[i]=np}
+      else for(let k=0;k<2;k++)if(Math.random()<.7&&ovr(q)<(q.pot||9)){const a=pick(ATTR);q[a]=clamp(q[a]+1,1,10)}
+    }
+    CAR.prestige[t.id]=clamp(CAR.prestige[t.id]+randi(-1,1),t.elite?4:1,5);
+  }
+  const ids=new Set(ro.map(q=>q.id));
+  CAR.lines={O:CAR.lines.O.filter(id=>ids.has(id)),D:CAR.lines.D.filter(id=>ids.has(id))};
+  CAR.year++;CAR.cc+=2;CAR.offseason=null;
+  newSeason();saveCareer();
+  gains.sort((a,b)=>b.d-a.d);
+  show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*640)">
+    <div class="eyebrow">Year ${CAR.year} · ${esc(my.name)}</div><h2>Offseason report</h2>
+    <h3>Biggest jumps</h3>
+    <div class="small">${gains.slice(0,6).map(g=>`${esc(pname(g.p))} +${g.d.toFixed(1)} OVR ${'★'.repeat(starsOf(g.p))}`).join('<br>')||'Nobody improved much. A bigger training center helps.'}</div>
+    <h3>New faces</h3>
+    <div class="small">${signed.map(p=>`${esc(pname(p))} (${p.pos}, recruit)`).concat(walk.map(p=>`${esc(pname(p))} (${p.pos}, walk-on)`)).join('<br>')||'No new players.'}</div>
+    <p class="dim small">Boosters chipped in 2 CC. Check your lines: graduates were taken off them.</p>
+    <div class="row end"><button class="btn" id="rhub" data-primary>To the new season <span class="kbd">Enter</span></button></div>
+  </div></div>`);
+  on('rhub',showCoachHub);
+}
+
 // ---------------------------------------------------------------- layout + boot
 function fit(){
   const r=wrap.getBoundingClientRect();
@@ -1706,10 +2023,11 @@ window.addEventListener('resize',fit);
 function boot(data){
   fit();
   if(data&&data.career)try{localStorage.setItem(SAVE_KEY,JSON.stringify(data.career))}catch(e){}
+  if(data&&data.coach)try{localStorage.setItem(COACH_KEY,JSON.stringify(data.coach))}catch(e){}
   showTitle();
   requestAnimationFrame(loop);
 }
-window.claude?.hot?.snapshot?.(()=>({career:CAR||loadCareer()}));
+window.claude?.hot?.snapshot?.(()=>({career:loadCareer(),coach:loadCoach()}));
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
 window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCareer,showHub,step:dt=>update(dt)};
 })();
