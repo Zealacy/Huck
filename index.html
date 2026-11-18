@@ -130,10 +130,13 @@ tr.me td{background:var(--panel-2);color:var(--gold)}
 .attr .v{font-family:var(--font-display);text-align:right}
 .plus{font-family:var(--font-display);font-size:calc(var(--u)*11);background:var(--gold);color:var(--ink);border:0;padding:calc(var(--u)*4) calc(var(--u)*4);cursor:pointer;white-space:nowrap}
 .plus[disabled]{background:var(--panel-2);color:var(--dim);cursor:not-allowed}
+.xpbar{height:calc(var(--u)*8);background:var(--panel-2);position:relative}
+.xpbar i{position:absolute;left:0;top:0;bottom:0;background:var(--gold)}
 .sp{font-family:var(--font-display);font-size:calc(var(--u)*13);color:var(--gold)}
 .sched{display:flex;flex-direction:column;gap:calc(var(--u)*2);font-size:calc(var(--u)*14)}
 .sched div{display:grid;grid-template-columns:calc(var(--u)*28) minmax(0,1fr) auto;gap:calc(var(--u)*8);padding:calc(var(--u)*2) calc(var(--u)*4)}
 .sched div.next{background:var(--panel-2);color:var(--gold)}
+.sched div span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nextbox{background:var(--panel-2);padding:calc(var(--u)*10) calc(var(--u)*12);display:flex;flex-direction:column;gap:calc(var(--u)*8)}
 .nextbox .big{font-family:var(--font-display);font-size:calc(var(--u)*18)}
 input{font-family:var(--font-body);font-size:calc(var(--u)*17);background:var(--ink);color:var(--chalk);border:calc(var(--u)*2) solid var(--line);padding:calc(var(--u)*6) calc(var(--u)*8);width:100%;box-sizing:border-box}
@@ -201,7 +204,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 13 · Nov 18';
+const VERSION='Version 14 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1662,7 +1665,13 @@ const COACH_KEY='pacific-huck-coach-v1';
 function loadCoach(){try{const s=localStorage.getItem(COACH_KEY);return s?migrate(JSON.parse(s)):null}catch(e){return null}}
 const YR={9:'Fr',10:'So',11:'Jr',12:'Sr'};
 const starsAt=o=>o>=8?5:o>=6.8?4:o>=5.6?3:o>=4.4?2:1;
-const ccCost=r=>r<=4?1:r<=6?2:r<=8?3:4;
+// Each player earns his own skill points by playing, and they can only be spent on him.
+const spCost=r=>r<=4?1:r<=6?2:r<=8?3:4;
+const XP_PER_SP=75;
+function playerXP(s,pts,win,playoff){
+  if(!pts)return 0;
+  return pts*2+s.g*6+s.a*6+s.d*5+s.ct+s.c+(win?4:0)+(playoff?3:0);
+}
 const facCost=lv=>lv*5;
 const FAC={
   train:{name:'Training center',does:lv=>`Returning players get ${1+lv} development rolls every offseason.`},
@@ -1704,8 +1713,8 @@ function showCoachHub(){
   const S=CAR.season,t=TEAM(CAR.teamId),ro=myRoster(),ng=nextGame(),st=S.standings[CAR.teamId];
   const sorted=ro.slice().sort((a,b)=>('HCD'.indexOf(a.pos)-'HCD'.indexOf(b.pos))||(ovr(b)-ovr(a)));
   const inO=new Set(CAR.lines.O),inD=new Set(CAR.lines.D);
-  const rows=sorted.map(p=>{const ps=S.pstats[p.id];
-    return`<tr class="click" tabindex="0" data-pid="${p.id}"><td class="trunc">${esc(pname(p))}</td><td class="pos">${p.pos}</td><td>${YR[p.grade]||''}</td><td class="n">${ovr(p).toFixed(1)}</td><td class="stars">${'★'.repeat(starsOf(p))}</td><td class="stars ceil">${'★'.repeat(starsAt(p.pot||ovr(p)))}</td><td>${inO.has(p.id)?'<b class="tagO">O</b>':''}${inD.has(p.id)?'<b class="tagD">D</b>':''}</td><td class="n">${ps?`${ps.g}/${ps.a}/${ps.d}`:'–'}</td></tr>`}).join('');
+  const rows=sorted.map(p=>{const ps=S.pstats[p.id],sp=p.sp||0,canSpend=sp>0&&ATTR.some(a=>canUpgrade(p,a)&&sp>=spCost(p[a]));
+    return`<tr class="click" tabindex="0" data-pid="${p.id}"><td class="trunc">${esc(pname(p))}</td><td class="pos">${p.pos}</td><td>${YR[p.grade]||''}</td><td class="n">${ovr(p).toFixed(1)}</td><td class="stars">${'★'.repeat(starsOf(p))}</td><td class="stars ceil">${'★'.repeat(starsAt(p.pot||ovr(p)))}</td><td>${inO.has(p.id)?'<b class="tagO">O</b>':''}${inD.has(p.id)?'<b class="tagD">D</b>':''}</td><td class="n">${ps?`${ps.g}/${ps.a}/${ps.d}`:'–'}</td><td class="n ${canSpend?'gold':'dim'}">${sp}</td></tr>`}).join('');
   const cnt=k=>ro.filter(p=>p.pos===k).length;
   let next;
   if(ng){const o=TEAM(ng.opp),oro=rosterOf(ng.opp),star=topStars(oro,1)[0];
@@ -1720,11 +1729,11 @@ function showCoachHub(){
   show(`<div class="screen"><div class="panel hub">
     <div class="row between"><div><div class="eyebrow">Head coach · Year ${CAR.year}</div><h2>${esc(t.name)}</h2>
       <div class="dim">${esc(t.city)}, ${t.st} · ${st.w}-${st.l} this year · ${CAR.titles} title${CAR.titles===1?'':'s'} · ${CAR.totals.w}-${CAR.totals.l} all-time</div></div>
-      <div class="row"><span class="ccbadge" title="Coaching credits">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
+      <div class="row"><span class="ccbadge" title="Coaching credits: facilities and recruiting">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
     <div class="hub-grid coach">
       <section class="card">
-        <div class="row between"><h3>Roster</h3><span class="dim small">Click a player to spend credits on him.</span></div>
-        <table class="roster"><thead><tr><th>Player</th><th>Pos</th><th>Yr</th><th class="n">OVR</th><th>Now</th><th>Ceiling</th><th>Line</th><th class="n">G/A/D</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="row between"><h3>Roster</h3><span class="dim small">Players earn skill points by playing. Click one to spend his.</span></div>
+        <table class="roster"><thead><tr><th>Player</th><th>Pos</th><th>Yr</th><th class="n">OVR</th><th>Now</th><th>Ceiling</th><th>Line</th><th class="n">G/A/D</th><th class="n" title="Skill points to spend">SP</th></tr></thead><tbody>${rows}</tbody></table>
         <div class="dim small">Team OVR ${teamRating(ro).toFixed(1)} · Depth ${depthRating(ro).toFixed(1)} · ${cnt('H')} handlers, ${cnt('C')} cutters, ${cnt('D')} defenders</div>
       </section>
       <section class="card">${next}${seasonBlock()}</section>
@@ -1740,17 +1749,20 @@ function showCoachPlayer(id){
   const i=list.findIndex(p=>p.id===id),p=list[i];if(!p){showCoachHub();return}
   const ps=S.pstats[p.id]||{g:0,a:0,d:0,pts:0};
   const atCeil=!ATTR.some(a=>canUpgrade(p,a));
-  const rows=ATTR.map(a=>{const v=p[a],c=ccCost(v),can=canUpgrade(p,a),afford=CAR.cc>=c;
+  const sp=p.sp||0,xp=p.xp||0;
+  const rows=ATTR.map(a=>{const v=p[a],c=spCost(v),can=canUpgrade(p,a),afford=sp>=c;
     return`<div class="attr" title="${esc(ATTR_HINT[a])}"><span>${ATTR_NAME[a]}</span><div class="pips">${Array.from({length:10},(_,k)=>`<span class="${k<v?'on':''}"></span>`).join('')}</div><span class="v">${v}</span>
-    <button class="plus" data-up="${a}" ${can&&afford?'':'disabled'} aria-label="Upgrade ${ATTR_NAME[a]} for ${c} credits">${v>=10?'MAX':!can?'CEILING':`+1 · ${c}CC`}</button></div>`}).join('');
+    <button class="plus" data-up="${a}" ${can&&afford?'':'disabled'} aria-label="Upgrade ${ATTR_NAME[a]} for ${c} of his skill points">${v>=10?'MAX':!can?'CEILING':`+1 · ${c}SP`}</button></div>`}).join('');
   show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*620)">
-    <div class="row between"><div><div class="eyebrow">#${p.num} · ${POS[p.pos]} · ${GRADE[p.grade]||''}</div><h2>${esc(pname(p))}</h2></div><span class="ccbadge">${CAR.cc} CC</span></div>
+    <div class="row between"><div><div class="eyebrow">#${p.num} · ${POS[p.pos]} · ${GRADE[p.grade]||''}</div><h2>${esc(pname(p))}</h2></div><span class="ccbadge" title="His skill points">${sp} SP</span></div>
+    <div class="row between small"><span class="dim">Next skill point: ${xp} / ${XP_PER_SP} XP</span><span class="dim">Earned by playing: points, goals, assists, blocks, catches and wins</span></div>
+    <div class="xpbar"><i style="width:${Math.round(100*xp/XP_PER_SP)}%"></i></div>
     <div class="row between"><span>Now <span class="stars">${starStr(starsOf(p))}</span> <span class="dim">OVR ${ovr(p).toFixed(1)}</span></span><span>Ceiling <span class="stars">${starStr(starsAt(p.pot||ovr(p)))}</span> <span class="dim">OVR ${(p.pot||ovr(p)).toFixed(1)}</span></span></div>
     ${rows}
-    <p class="dim small">${atCeil?'He has reached his ceiling. Credits can’t take him further.':'Each upgrade adds one point. Costs rise with the rating, and upgrades stop at his ceiling.'} This season: ${ps.g} goals, ${ps.a} assists, ${ps.d} blocks, ${ps.pts} points played.</p>
+    <p class="dim small">${atCeil?'He has reached his ceiling. Skill points can’t take him further.':'His skill points only go to him. Each upgrade adds one point; costs rise with the rating and stop at his ceiling.'} This season: ${ps.g} goals, ${ps.a} assists, ${ps.d} blocks, ${ps.pts} points played.</p>
     <div class="row between"><div class="row"><button class="btn alt small" data-prev id="pprev">← Prev</button><button class="btn alt small" data-next id="pnext">Next →</button></div><button class="btn" id="pback" data-primary>Back to roster</button></div>
   </div></div>`);
-  ui.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.up,c=ccCost(p[a]);if(CAR.cc>=c&&canUpgrade(p,a)){CAR.cc-=c;p[a]++;saveProgram();SFX.level();showCoachPlayer(p.id)}}));
+  ui.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.up,c=spCost(p[a]);if((p.sp||0)>=c&&canUpgrade(p,a)){p.sp-=c;p[a]++;saveProgram();SFX.level();showCoachPlayer(p.id)}}));
   on('pprev',()=>showCoachPlayer(list[(i-1+list.length)%list.length].id));
   on('pnext',()=>showCoachPlayer(list[(i+1)%list.length].id));
   on('pback',showCoachHub);
@@ -1797,7 +1809,15 @@ function coachGameEnd(res){
   const S=CAR.season,ng=nextGame(),round=S.round,ro=myRoster();
   const myR=teamRating(ro),opR=teamRating(rosterOf(ng.opp));
   S.stats.gp++;CAR.totals.gp++;if(res.win){S.stats.w++;CAR.totals.w++}else{S.stats.l++;CAR.totals.l++}
-  for(const p of ro){const s=res.stats[p.id];if(!s)continue;const ps=S.pstats[p.id]||(S.pstats[p.id]={g:0,a:0,d:0,pts:0});ps.g+=s.g;ps.a+=s.a;ps.d+=s.d;ps.pts+=(res.pp||{})[p.id]||0}
+  const earned=[];
+  for(const p of ro){
+    const s=res.stats[p.id];if(!s)continue;const pts=(res.pp||{})[p.id]||0;
+    const ps=S.pstats[p.id]||(S.pstats[p.id]={g:0,a:0,d:0,pts:0});ps.g+=s.g;ps.a+=s.a;ps.d+=s.d;ps.pts+=pts;
+    if(res.forfeit)continue;
+    p.xp=(p.xp||0)+playerXP(s,pts,res.win,ng.kind==='po');p.sp=p.sp||0;let got=0;
+    while(p.xp>=XP_PER_SP){p.xp-=XP_PER_SP;p.sp++;got++}
+    if(got)earned.push({p,got});
+  }
   recordResult(res,ng);
   const lines=[];const add=(l,v)=>{if(v>0)lines.push([l,v])};
   if(!res.forfeit){
@@ -1818,8 +1838,9 @@ function coachGameEnd(res){
       <div class="card">
         <h3>Coaching credits</h3>
         <table><tbody>${lines.map(l=>`<tr><td>${esc(l[0])}</td><td class="n gold">+${l[1]} CC</td></tr>`).join('')||'<tr><td class="dim">No credits for a forfeit.</td></tr>'}</tbody></table>
-        <div class="sp">${CAR.cc} CC to spend</div>
-        <div class="dim small">Spend them on player upgrades from the roster, or on facilities.</div>
+        <div class="sp">${CAR.cc} CC for facilities and recruiting</div>
+        <h3>Skill points earned</h3>
+        <div class="small">${earned.length?earned.sort((a,b)=>b.got-a.got).map(x=>`${esc(pname(x.p))} +${x.got} <span class="dim">(${x.p.sp} to spend)</span>`).join('<br>'):'<span class="dim">Nobody earned a new point this game.</span>'}</div>
       </div>
     </div>
     <div class="row end"><button class="btn" id="khub" data-primary>Back to the program <span class="kbd">Enter</span></button></div>
@@ -1922,7 +1943,7 @@ function finishRecruiting(){
     <div class="small">${gains.slice(0,6).map(g=>`${esc(pname(g.p))} +${g.d.toFixed(1)} OVR ${'★'.repeat(starsOf(g.p))}`).join('<br>')||'Nobody improved much. A bigger training center helps.'}</div>
     <h3>New faces</h3>
     <div class="small">${signed.map(p=>`${esc(pname(p))} (${p.pos}, recruit)`).concat(walk.map(p=>`${esc(pname(p))} (${p.pos}, walk-on)`)).join('<br>')||'No new players.'}</div>
-    <p class="dim small">Boosters chipped in 2 CC. Check your lines: graduates were taken off them.</p>
+    <p class="dim small">Boosters chipped in 2 CC. Returning players keep their unspent skill points. Check your lines: graduates were taken off them.</p>
     <div class="row end"><button class="btn" id="rhub" data-primary>To the new season <span class="kbd">Enter</span></button></div>
   </div></div>`);
   on('rhub',showCoachHub);
