@@ -197,7 +197,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 14 · Nov 18';
+const VERSION='Version 15 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -330,18 +330,39 @@ const SFX={
 };
 
 // ---------------------------------------------------------------- input
-const input={mx:W/2,my:H/2,in:false,shift:false};
+// Throwing works like a slingshot: press anywhere, pull back away from where you want the disc to go,
+// and let go. The farther you pull, the longer the throw. Past flat range it becomes a huck.
+const input={mx:W/2,my:H/2,in:false,shift:false,drag:false,ax:0,ay:0,dragHuck:false};
+const PULL=2.4; // yards of throw per screen-yard of pull
 function mouseWorld(){return{x:G.camX+input.mx/PPY,y:(input.my-FT)/SQ}}
-cvs.addEventListener('mousemove',e=>{const r=cvs.getBoundingClientRect();input.mx=(e.clientX-r.left)*W/r.width;input.my=(e.clientY-r.top)*H/r.height;input.in=true;input.shift=e.shiftKey});
+function canvasPoint(e){const r=cvs.getBoundingClientRect();input.mx=(e.clientX-r.left)*W/r.width;input.my=(e.clientY-r.top)*H/r.height}
+function canAim(){return G&&!G.demo&&!G.paused&&G.phase==='live'&&G.holder>=0&&!ui.firstElementChild}
+// where the current pull would send the disc, and whether it's a huck
+function pullAim(){
+  const h=G.off[G.holder],pull=Math.hypot(input.ax-input.mx,input.ay-input.my);
+  const dx=(input.ax-input.mx)/PPY*PULL,dy=(input.ay-input.my)/SQ*PULL;
+  let d=Math.hypot(dx,dy),tx=h.x+dx,ty=h.y+dy;
+  const huck=input.shift||input.dragHuck||d>flatRange(h.p.thr);
+  const maxR=huck?huckRange(h.p.thr):flatRange(h.p.thr),over=d>maxR;
+  if(over){tx=h.x+dx*maxR/d;ty=h.y+dy*maxR/d;d=maxR}
+  return{h,tx,ty,d,huck,over,pull};
+}
+cvs.addEventListener('mousemove',e=>{canvasPoint(e);input.in=true;input.shift=e.shiftKey});
 cvs.addEventListener('mouseleave',()=>input.in=false);
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
 cvs.addEventListener('mousedown',e=>{
-  audio();
-  if(!G||G.paused||G.demo)return;
-  const r=cvs.getBoundingClientRect();input.mx=(e.clientX-r.left)*W/r.width;input.my=(e.clientY-r.top)*H/r.height;
-  const w=mouseWorld();
-  const huck=e.shiftKey||e.button===2;
-  throwDisc(huck?'huck':'flat',w.x,w.y,false);
+  audio();canvasPoint(e);
+  if(!canAim())return;
+  input.drag=true;input.ax=input.mx;input.ay=input.my;input.dragHuck=e.button===2;
+});
+window.addEventListener('mousemove',e=>{if(input.drag){canvasPoint(e);input.shift=e.shiftKey}});
+window.addEventListener('mouseup',e=>{
+  if(!input.drag)return;
+  input.drag=false;canvasPoint(e);
+  if(!canAim())return;
+  const a=pullAim();
+  if(a.pull<14)return; // a tap, not a throw
+  throwDisc(a.huck?'huck':'flat',a.tx,a.ty,false);
 });
 window.addEventListener('keydown',e=>{
   if(e.key==='Shift')input.shift=true;
@@ -351,13 +372,14 @@ window.addEventListener('keydown',e=>{
   if(k===' '&&G&&!G.demo&&!G.paused&&!ui.firstElementChild){e.preventDefault();pivotFake();return}
   if(k==='t'){callTimeout();return}
   if(k==='m'){muted=!muted;flashNote(muted?'Sound off':'Sound on');return}
+  if(k==='escape'&&input.drag){e.preventDefault();input.drag=false;return} // cancel the throw you're lining up
   if((k==='escape'||k==='p')&&G&&!G.demo&&G.phase!=='over'&&G.phase!=='idle'){e.preventDefault();togglePause();return}
   if(k==='enter'){const b=ui.querySelector('[data-primary]');if(b&&!b.disabled){e.preventDefault();b.click()}return}
   if(k==='1'||k==='2'){const b=ui.querySelector(`[data-key="${k}"]`);if(b){e.preventDefault();b.click()}}
   if(k==='arrowleft'||k==='arrowright'){const b=ui.querySelector(k==='arrowleft'?'[data-prev]':'[data-next]');if(b){e.preventDefault();b.click()}}
 });
 window.addEventListener('keyup',e=>{if(e.key==='Shift')input.shift=false});
-window.addEventListener('blur',()=>{input.shift=false;if(G&&!G.demo&&!G.paused&&['live','flight','ready'].includes(G.phase))togglePause()});
+window.addEventListener('blur',()=>{input.shift=false;input.drag=false;if(G&&!G.demo&&!G.paused&&['live','flight','ready'].includes(G.phase))togglePause()});
 
 // ---------------------------------------------------------------- match state
 let G=null;
@@ -461,6 +483,11 @@ function later(fn,ms){const t=setTimeout(fn,ms);G.timers.push(t);return t}
 function banner(text,sub,col,dur){if(G.demo)return;G.banner={text,sub:sub||'',col:col||PAL.chalk,t:dur||1.2,d:dur||1.2}}
 function stallNum(){return G.stallT>0?Math.min(10,Math.floor(G.stallT/.85)+1):0}
 const flatRange=t=>34+t*1.1;
+// How far off target a throw can land (yards): bad throwers spray it, good ones put it on a dime.
+function throwErr(thr,d,type){
+  const e=d*(type==='flat'?(.075-thr*.0065):(.12-thr*.009));
+  return e*(G&&stallNum()>=8?1.5:1);
+}
 const huckRange=t=>46+t*2.9;
 
 function computeForce(){
@@ -783,6 +810,8 @@ function openness(e){
   const h=G.holder>=0?G.off[G.holder]:null;if(!h)return 0;
   const{ax,ay,T,huck}=leadSpot(h,e);
   const L=Math.max(1,dist(h.x,h.y,ax,ay));
+  // a shaky thrower can miss even an open man: fold his likely miss distance into the read
+  const er=throwErr(h.p.thr,L,huck?'huck':'flat'),miss=huck?clamp((er*.3-.3)*.3,0,.35):clamp((er*.6-.3)*.3,0,.4); // receivers track hucks, so misses matter less there
   const f={type:huck?'huck':'flat',fx:h.x,fy:h.y,tx:ax,ty:ay,t:0,T,dist:L,ux:(ax-h.x)/L,uy:(ay-h.y)/L,apex:huck?2.5+L*.11:0};
   const od=G.def[e.idx];
   const r={x:e.x,y:e.y,vx:e.vx,vy:e.vy,speed:e.speed,p:e.p,tx:ax,ty:ay};
@@ -808,7 +837,7 @@ function openness(e){
       const rAlong=(r.x-c.x)*f.ux+(r.y-c.y)*f.uy;
       let p=posD(r.p,d.p,d.x,d.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late);
       for(const q of others)if(!(q.mark&&f.t<.4))p=Math.max(p,posD(r.p,q.p,q.x,q.y,c.x,c.y,f.ux,f.uy,rAlong,rd,huck,c.late));
-      return p;
+      return 1-(1-p)*(1-miss);
     }
   }
   return .95;
@@ -849,7 +878,7 @@ function throwDisc(type,ax,ay,ai){
   const maxR=type==='flat'?flatRange(thr):huckRange(thr);
   if(d>maxR){dx*=maxR/d;dy*=maxR/d;d=maxR}
   let tx=h.x+dx,ty=h.y+dy;
-  let err=d*(type==='flat'?(.035-thr*.0025):(.095-thr*.006));if(stallNum()>=8)err*=1.6;
+  let err=throwErr(thr,d,type);
   const ea=Math.random()*Math.PI*2,er=err*Math.sqrt(Math.random())*1.2;
   tx+=Math.cos(ea)*er;ty+=Math.sin(ea)*er;
   const sp=type==='flat'?19+thr*.9:14+thr*.55;
@@ -1041,7 +1070,7 @@ function update(dt){
     if(G.phase==='flight')updateFlight(dt);
     if(G.holder>=0){
       const h=G.off[G.holder];
-      if(G.phase==='live'&&!G.demo&&input.in){const w=mouseWorld();h.face=w.x>=h.x?1:-1}
+      if(G.phase==='live'&&!G.demo&&input.drag){const a=pullAim();h.face=a.tx>=h.x?1:-1}
       G.disc.x=h.x+h.face*.55;G.disc.y=h.y;G.disc.z=1.1;
     }
   }
@@ -1322,13 +1351,15 @@ function drawGroundLayer(){
   }
 }
 function drawAim(){
-  if(G.phase!=='live'||G.demo||G.holder<0||!input.in||G.paused||ui.firstElementChild)return;
-  const h=G.off[G.holder],w=mouseWorld(),huck=input.shift;
-  let dx=w.x-h.x,dy=w.y-h.y,d=Math.hypot(dx,dy);
-  const maxR=huck?huckRange(h.p.thr):flatRange(h.p.thr),over=d>maxR;
-  if(over){dx*=maxR/d;dy*=maxR/d;d=maxR}
-  const tx=h.x+dx,ty=h.y+dy;
-  const inW=Math.abs(angDiff(Math.atan2(dy,dx),G.markAng))<.8&&G.fake<=0;
+  if(!input.drag||!canAim())return;
+  const{h,tx,ty,d,huck,over,pull}=pullAim();
+  // the pull itself: a rubber band from where you pressed to where you are
+  ctx.globalAlpha=.55;ctx.strokeStyle=PAL.chalk;ctx.lineWidth=2;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(input.ax,input.ay);ctx.lineTo(input.mx,input.my);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+  rect(input.ax-3,input.ay-3,6,6,PAL.chalk);
+  if(pull<14)return;
+  const ang=Math.atan2(ty-h.y,tx-h.x);
+  const inW=Math.abs(angDiff(ang,G.markAng))<.8&&G.fake<=0;
   const c=over?PAL.red:inW?PAL.sunset:PAL.chalk;
   const apex=2.5+d*.11;
   for(let s=.06;s<1;s+=huck?.04:.05){
@@ -1336,12 +1367,14 @@ function drawAim(){
     rect(sx(x)-1,sy(y)-Math.round(z*ZH)-6,2,2,c);
   }
   const X=sx(tx),Y=sy(ty);
-  rect(X-8,Y,5,2,c);rect(X+4,Y,5,2,c);rect(X,Y-6,2,4,c);rect(X,Y+3,2,4,c);
-  ctx.strokeStyle=c;ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(X+1,Y+1,9,5,0,0,Math.PI*2);ctx.stroke();
+  // the accuracy circle: where the disc could actually land with this thrower
+  const er=throwErr(h.p.thr,d,huck?'huck':'flat')*1.2;
+  ctx.globalAlpha=.35;ctx.fillStyle=c;ctx.beginPath();ctx.ellipse(X,Y,Math.max(4,er*PPY),Math.max(2.5,er*SQ),0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  rect(X-6,Y,4,2,c);rect(X+3,Y,4,2,c);rect(X,Y-4,2,3,c);rect(X,Y+3,2,3,c);
   text(`${huck?'HUCK':'FLAT'} ${Math.round(d)}YD`,X+14,Y-6,10,c,'left');
   if(inW)text('INTO THE MARK',X+14,Y+8,9,PAL.sunset,'left');
-  const r=chooseReceiver(tx,ty);
-  G.aimR=r||null;
+  G.aimR=chooseReceiver(tx,ty)||null;
+  h.face=tx>=h.x?1:-1;
 }
 // A small colored dot above each teammate: green open, yellow contested, red covered.
 // The teammate your aim would send gets a white ring around his dot.
@@ -1397,7 +1430,7 @@ function drawHUD(){
   // controls strip
   if(G.phase==='live'||G.phase==='ready'||G.phase==='flight'){
     rect(0,H-20,W,20,'rgba(11,18,26,.72)');
-    text('CLICK  FLAT     SHIFT+CLICK  HUCK     SPACE  PIVOT FAKE     T  TIMEOUT     ESC  PAUSE',W/2,H-6,10,PAL.dim,'center',false);
+    text('DRAG BACK + RELEASE  THROW     SHIFT  HUCK     SPACE  PIVOT FAKE     T  TIMEOUT     ESC  PAUSE',W/2,H-6,10,PAL.dim,'center',false);
   }
 }
 function drawBanner(){
@@ -1421,7 +1454,7 @@ function render(){
   if(G.rain){ctx.fillStyle='rgba(200,215,230,.45)';for(const r of G.rainDrops)ctx.fillRect(Math.round(r.x),Math.round(r.y),1,7)}
   drawHUD();drawBanner();
   if(note){note.t-=1/60;text(note.s.toUpperCase(),W/2,H-30,12,PAL.chalk,'center');if(note.t<=0)note=null}
-  cvs.style.cursor=(!G.demo&&G.phase==='live'&&!ui.firstElementChild)?'none':'default';
+  cvs.style.cursor=(!G.demo&&G.phase==='live'&&!ui.firstElementChild)?(input.drag?'grabbing':'grab'):'default';
 }
 let lastT=performance.now();
 let loopErrors=0;
@@ -1470,9 +1503,9 @@ function showHow(back){
     <div class="eyebrow">How to play</div><h2>Move the disc. Beat the mark.</h2>
     <div class="how">
       <div class="keys">
-        <span class="kbd">MOUSE</span><span>Aim. The dotted line shows the flight, the arrow shows who will go get it.</span>
-        <span class="kbd">CLICK</span><span>Flat throw. Fast and accurate, shorter range.</span>
-        <span class="kbd">SHIFT+CLICK</span><span>Huck. A long, floating throw that the wind pushes around. Right-click works too.</span>
+        <span class="kbd">DRAG BACK</span><span>Press anywhere and pull back away from where you want to throw, like a slingshot. Let go to throw. Pull farther for a longer throw.</span>
+        <span class="kbd">PREVIEW</span><span>While you pull you see the flight, where it lands, and a circle for how accurate this thrower is. Worse throwers have bigger circles.</span>
+        <span class="kbd">SHIFT</span><span>Hold while pulling to put it up as a huck, a floating throw the wind pushes around. Long pulls become hucks on their own. Right-drag works too. Esc cancels a throw.</span>
         <span class="kbd">SPACE</span><span>Pivot fake. Your marker bites and the mark opens for a moment.</span>
         <span class="kbd">T</span><span>Timeout while you hold the disc. Two per game. Your line gets some energy back.</span>
         <span class="kbd">ESC</span><span>Pause.</span>
