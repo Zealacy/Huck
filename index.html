@@ -219,7 +219,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 25 · Nov 18';
+const VERSION='Version 26 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1164,7 +1164,7 @@ function throwDisc(type,ax,ay,ai){
   const ang=bend.rel; // what the marker sees is where the disc leaves the hand
   const thrower=G.holder;
   type==='huck'?SFX.huck():SFX.throw();
-  h.face=tx>=h.x?1:-1;
+  h.face=tx>=h.x?1:-1;act(h,'throw');
   const relIn=Math.abs(angDiff(bend.rel,G.markAng))<.8,straightIn=Math.abs(angDiff(bend.straight,G.markAng))<.8;
   // straight through the wedge: full hand-block chance. Bent around it: much lower. Released into it: full.
   if((relIn||straightIn)&&G.markerSet&&d>3){
@@ -1227,8 +1227,9 @@ function updateFlight(dt){
   if(offC&&defC&&f.type==='huck'){
     // both under it: a sky battle, won by whoever is better positioned underneath and jumps higher
     const pD=contest(offC.e,x,y,f.ux,f.uy,offC.dd,true,late,d=>d!==defC.e).pD;
-    if(Math.random()>=pD)doCatch(offC.e,f,'SKYED!');
-    else turnover({label:'SKYED!',x,y,by:defC.e,kind:'d',f});
+    const tx0=G.off[f.thrower].x;faceTo(defC.e,tx0);
+    if(Math.random()>=pD){act(defC.e,'sky');doCatch(offC.e,f,'SKYED!')}
+    else{faceTo(offC.e,tx0);act(offC.e,'sky');turnover({label:'SKYED!',x,y,by:defC.e,kind:'d',f})}
     maybeInjury(Math.random()<.5?offC.e:defC.e,.04);
     return;
   }
@@ -1238,10 +1239,11 @@ function updateFlight(dt){
     const own=c.e.idx===f.rcv;
     const pD=own?clamp(.72+(c.e.p.def-thrP.thr)*.03+(late?-.1:0),.45,.9):clamp(.4+(c.e.p.def-thrP.thr)*.03,.2,.6);
     if(Math.random()<pD){turnover({label:late?'LAYOUT D':'D!',x,y,by:c.e,kind:'d',f});if(late)maybeInjury(c.e,.05)}
+    else{faceTo(c.e,G.off[f.thrower].x);act(c.e,'block')}
   }else{
     const huck=f.type==='huck';
     const{pD,by}=contest(c.e,x,y,f.ux,f.uy,c.dd,huck,late,d=>f.touched.has(d)||(d.idx===f.thrower&&f.t<.4));
-    if(by&&Math.random()<pD){turnover({label:huck?'SKYED!':late?'LAYOUT D':'D!',x,y,by,kind:'d',f});if(late)maybeInjury(by,.05);return}
+    if(by&&Math.random()<pD){faceTo(c.e,G.off[f.thrower].x);act(c.e,huck?'sky':'catch');turnover({label:huck?'SKYED!':late?'LAYOUT D':'D!',x,y,by,kind:'d',f});if(late)maybeInjury(by,.05);return}
     // he won the position battle; now he just has to hang on
     let pc=.95+c.e.p.hnd*.005-(late?.15:0)-(pD>.3?.05:0)-(huck?.03:0);
     pc=clamp(pc,.35,.985);
@@ -1260,6 +1262,9 @@ function doCatch(e,f,label){
   G.flight=null;resetChases();
   if(e.y<0||e.y>FW||e.x>FL||e.x<0){turnover({label:'OUT',x:clamp(e.x,0,FL),y:clamp(e.y,0,FW),kind:'out',f,recv:e});return}
   if(e.x>=90&&!endZoneHands(e.p,G.me.team)){turnover({label:'DROP',x:G.disc.x,y:G.disc.y,kind:'drop',recv:e,f});return}
+  if(label==='LAYOUT!')act(e,'layout',{dir:diveDir(e,G.disc.x)});
+  else{faceTo(e,thrEnt.x);act(e,label==='SKYED!'?'sky':'catch')} // hands toward where it came from
+  fx('pop',G.disc.x,G.disc.y,G.disc.z);
   SFX.catch();
   if(!G.demo){G.stats[thrEnt.p.id].c++;G.stats[e.p.id].ct++}
   if(e.x>=90){goal(e,thrEnt);return}
@@ -1283,6 +1288,7 @@ function goal(e,thrEnt){
 function turnover(o){
   const subs={d:o.by?`${pname(o.by.p)} gets the block`:'',block:o.by?`Point-block by ${tag(o.by.p)}`:'',drop:o.recv?`${o.recv.p.last} drops it`:'',turf:'Throwaway',out:'Out of bounds',stall:o.by?`Stall ten. ${o.by.p.last} on the mark`:'Stall ten'};
   SFX.turn();G.lastTO=o.label;G.toCount=(G.toCount||0)+1;
+  const z0=G.disc.z||0;
   banner(o.label,subs[o.kind]||'',PAL.red,1.4);
   if(!G.demo){
     const st=G.stats;
@@ -1291,6 +1297,7 @@ function turnover(o){
     else if(o.f)st[G.off[o.f.thrower].p.id].to++;
   }
   G.flight=null;G.holder=-1;G.disc.x=o.x;G.disc.y=o.y;G.disc.z=0;resetChases();
+  turnoverFx(o,z0);
   G.phase='dead';G.deadT=1.5;
   const x=o.x;
   G.after=G.demo?()=>setupPossession(rand(22,40),rand(8,32),''):()=>startDefense(clamp(x,20,90),false);
@@ -1336,6 +1343,7 @@ function liveLogic(dt){
 }
 function update(dt){
   G.t+=dt;
+  updateFx(dt);
   if(G.banner){G.banner.t-=dt;if(G.banner.t<=0)G.banner=null}
   if(G.rain)for(const r of G.rainDrops){r.y+=r.s*dt;r.x-=r.s*.25*dt;if(r.y>H){r.y=-10;r.x=Math.random()*(W+120)}}
   const ph=G.phase;
@@ -1588,21 +1596,111 @@ function drawField(){
   text(G.opp.team.abbr,sx(100),sy(22),40,PAL.chalk,'center',false);
   ctx.globalAlpha=1;
 }
+
+// ---------------------------------------------------------------- action animations
+// Short poses on top of the run cycle (e.act), little bursts drawn over the field (G.fx), and a loose disc
+// that skips away after a block or a drop (G.loose). All visual: they never change who catches what.
+const ACT_LEN={throw:.32,catch:.3,drop:.38,block:.36,sky:.55,layout:.9},LAY_AIR=.2,LAY_UP=.62;
+function act(e,k,o){if(e)e.act=Object.assign({k,t:0,d:ACT_LEN[k],face:(o&&o.dir)||e.face||1},o||{})}
+// a layout goes the way he's running (or at the disc if he's barely moving)
+function diveDir(e,x){return Math.abs(e.vx)>.5?Math.sign(e.vx):x>=e.x?1:-1}
+function fx(kind,x,y,z,o){(G.fx=G.fx||[]).push(Object.assign({kind,x,y,z:z||0,t:0,d:{pop:.22,hit:.34,dust:.5}[kind]||.3,s:Math.random()},o||{}))}
+function faceTo(e,x){if(e&&Math.abs(x-e.x)>.05)e.face=x>e.x?1:-1}
+function looseDisc(x,y,z,ux,uy,sp,up){G.disc.x=x;G.disc.y=y;G.disc.z=Math.max(0,z);G.loose={vx:ux*sp,vy:uy*sp,vz:up}}
+function turnoverFx(o,z0){
+  const f=o.f,ux=f?f.ux:1,uy=f?f.uy:0,fromX=f?G.off[f.thrower].x:o.x,turn=(a,s)=>[ux*Math.cos(a)-uy*Math.sin(a),ux*Math.sin(a)+uy*Math.cos(a)].map(v=>v*s);
+  if(o.kind==='d'&&o.by){
+    // knocked away: off to one side and back a little
+    if(o.label==='LAYOUT D')act(o.by,'layout',{dir:diveDir(o.by,o.x)});
+    else{faceTo(o.by,fromX);act(o.by,o.label==='SKYED!'?'sky':'block')}
+    fx('hit',o.x,o.y,Math.max(.6,z0));
+    const[dx,dy]=turn((Math.random()<.5?1:-1)*rand(1.7,2.6),1);looseDisc(o.x,o.y,Math.max(.6,z0),dx,dy,rand(4,7),rand(1.5,3.5));
+  }else if(o.kind==='block'&&o.by){
+    // hand block: the marker gets a piece of it right out of the thrower's hand
+    const t=o.thrower;faceTo(o.by,t?t.x:o.x);act(o.by,'block');if(t)act(t,'throw');
+    fx('hit',o.x,o.y,1.2);
+    const bx=t?o.x-t.x:-1,by=t?o.y-t.y:0,bl=Math.hypot(bx,by)||1,a=rand(-1,1);
+    looseDisc(o.x,o.y,1.2,(bx*Math.cos(a)-by*Math.sin(a))/bl,(bx*Math.sin(a)+by*Math.cos(a))/bl,rand(3,5),rand(1.5,2.5));
+  }else if(o.kind==='drop'&&o.recv){
+    // off the hands: it pops up and keeps going
+    faceTo(o.recv,fromX);act(o.recv,'drop');
+    looseDisc(o.x,o.y,Math.max(.8,z0),ux,uy,rand(2,3.5),rand(2,3));
+  }else if(o.kind==='turf'||o.kind==='out'){
+    fx('dust',o.x,o.y,0);looseDisc(o.x,o.y,0,ux,uy,rand(3,5),.8);
+  }
+}
+function updateFx(dt){
+  for(const e of G.off.concat(G.def)){
+    const A=e.act;if(!A)continue;A.t+=dt;
+    if(A.k==='layout'&&A.t>LAY_AIR&&A.t<LAY_UP&&Math.random()<dt*16)fx('dust',e.x-A.face*rand(.2,1.4),e.y+rand(-.3,.3),0);
+    if(A.t>=A.d)e.act=null;
+  }
+  if(G.fx){for(const p of G.fx)p.t+=dt;G.fx=G.fx.filter(p=>p.t<p.d)}
+  const L=G.loose;
+  if(L&&G.holder<0&&!G.flight){
+    const d=G.disc;d.x+=L.vx*dt;d.y+=L.vy*dt;d.z+=L.vz*dt;L.vz-=14*dt;
+    if(d.z<=0){
+      d.z=0;
+      if(L.vz<-1.5){L.vz=-L.vz*.3;L.vx*=.55;L.vy*=.55;fx('dust',d.x,d.y,0)} // a bounce
+      else{L.vz=0;const k=Math.exp(-5*dt);L.vx*=k;L.vy*=k;if(Math.hypot(L.vx,L.vy)<.25)G.loose=null} // skidding to a stop
+    }
+    d.x=clamp(d.x,-2,FL+2);d.y=clamp(d.y,-2,FW+2);
+  }else if(L)G.loose=null;
+}
+// a layout: flat out in the air, then sliding on the turf (getting up is drawn by drawPlayer)
+function drawLayout(e,col,A,X,Y){
+  const f=A.face,skin=SKIN[e.p.skin],hair=HAIR[e.p.hair];
+  const lift=A.t<LAY_AIR?Math.round(9*Math.sin(Math.PI*A.t/LAY_AIR)):0;
+  const L=(c,r,w,h,color)=>{const cc=f===1?c:15-c-w;ctx.fillStyle=color;ctx.fillRect(X-15+cc*P,Y-7-lift+r*P,w*P,h*P)};
+  L(0,1,1,2,'#1d232b');L(1,1,2,2,skin);       // shoes, legs trailing
+  L(3,0,2,3,col.s);L(5,0,5,3,col.j);          // shorts, jersey
+  L(10,0,3,3,skin);L(10,0,3,1,hair);L(10,1,1,1,hair);L(12,1,1,1,PAL.ink); // head
+  L(13,1,2,1,skin);                           // arms stretched out for it
+}
+function drawFx(){
+  if(!G.fx)return;
+  for(const p of G.fx){
+    const k=p.t/p.d,X=sx(p.x),Y=sy(p.y)-Math.round(p.z*ZH)-6;
+    ctx.globalAlpha=1-k*k;
+    if(p.kind==='pop'){const r=3+k*7;for(let i=0;i<8;i++){const a=i*Math.PI/4+p.s;rect(X+Math.cos(a)*r-1,Y+Math.sin(a)*r*.7-1,2,2,PAL.chalk)}}
+    else if(p.kind==='hit'){
+      const r=4+k*11;rect(X-3,Y-3,6,6,k<.3?PAL.chalk:PAL.gold);
+      for(let i=0;i<8;i++){const a=i*Math.PI/4+p.s;rect(X+Math.cos(a)*r-1,Y+Math.sin(a)*r*.7-1,i%2?2:3,i%2?2:3,i%2?PAL.sunset:PAL.gold)}
+    }else if(p.kind==='dust'){for(let i=0;i<3;i++){const ox=(i-1)*4+Math.sin(p.s*9+i)*2,oy=-k*9-i;rect(sx(p.x)+ox-1,sy(p.y)+oy-2,3,3,'#cdbb92')}}
+    ctx.globalAlpha=1;
+  }
+}
 function drawPlayer(e,col){
   const X=sx(e.x),Y=sy(e.y);if(X<-30||X>W+30)return;
-  const left=X-7,top=Y-13*P,f=e.face;
-  ctx.fillStyle='rgba(0,0,0,.28)';ctx.fillRect(X-8,Y-2,16,4);ctx.fillRect(X-5,Y-3,10,6);
+  const A=e.act,at=A?clamp(A.t/A.d,0,1):0;
+  ctx.fillStyle='rgba(0,0,0,.28)';
+  if(A&&A.k==='layout'&&A.t<LAY_UP){ctx.fillRect(X-15,Y-2,30,4);drawLayout(e,col,A,X,Y);return}
+  ctx.fillRect(X-8,Y-2,16,4);ctx.fillRect(X-5,Y-3,10,6);
+  const lift=A&&A.k==='sky'?Math.round(16*Math.sin(Math.PI*at)):0; // up in the air; the shadow stays on the grass
+  const kneel=!!(A&&A.k==='layout');                                 // getting back up after a layout
+  const left=X-7,top=Y-13*P-lift+(kneel?3*P:0),f=A?A.face:e.face;
   const skin=SKIN[e.p.skin],hair=HAIR[e.p.hair];
   const px=(c,r,w,h,color)=>{const cc=f===1?c:7-c-w;ctx.fillStyle=color;ctx.fillRect(left+cc*P,top+r*P,w*P,h*P)};
-  const moving=Math.hypot(e.vx,e.vy)>.8,fr=moving&&Number.isFinite(e.anim)?((Math.floor(e.anim*1.4)%4)+4)%4:0;
+  const moving=!A&&Math.hypot(e.vx,e.vy)>.8,fr=moving&&Number.isFinite(e.anim)?((Math.floor(e.anim*1.4)%4)+4)%4:0;
   const shoe='#1d232b';
   const ready=!moving&&(e.state==='stack'||e.state==='handler'||e.state==='guard'||e.state==='mark');
-  const legs=moving?[[1,5],[2,4],[3,3],[4,2]][fr]:ready?[1,5]:[2,4];
-  px(legs[0],9,1,3,skin);px(legs[1],9,1,3,skin);px(legs[0],12,1,1,shoe);px(legs[1],12,1,1,shoe);
+  if(kneel){px(1,9,4,1,skin);px(0,9,1,1,shoe)}
+  else{
+    const legs=A?(A.k==='throw'&&A.t>.06?[0,5]:A.k==='sky'?[2,4]:[1,5]):moving?[[1,5],[2,4],[3,3],[4,2]][fr]:ready?[1,5]:[2,4];
+    const lh=A&&A.k==='sky'?2:3; // legs tucked in the air
+    px(legs[0],9,1,lh,skin);px(legs[1],9,1,lh,skin);px(legs[0],9+lh,1,1,shoe);px(legs[1],9+lh,1,1,shoe);
+  }
   px(1,7,5,2,col.s);
   px(1,3,5,4,col.j);
   const marking=e.state==='mark'&&G.holder>=0;
-  if(marking){px(-1,4,2,1,skin);px(6,4,2,1,skin);px(-1,3,1,1,skin);px(7,3,1,1,skin)}
+  if(A&&!kneel){
+    if(A.k==='throw'){if(A.t<.07){px(-1,4,2,1,skin);px(6,5,1,2,skin)}else{px(6,4,3,1,skin);px(0,4,1,3,skin)}} // wind back, then the arm whips through
+    else if(A.k==='catch'||A.k==='drop'){px(6,3,2,1,skin);px(6,5,2,1,skin)}  // both hands out front
+    else if(A.k==='block'){px(6,1,1,3,skin);px(7,0,1,2,skin);px(0,4,1,3,skin)} // swipe up at it
+    else if(A.k==='sky'){px(1,-2,1,5,skin);px(5,-2,1,5,skin)}                    // both arms straight up
+  }
+  else if(kneel){px(0,4,1,3,skin);px(6,5,1,2,skin)}
+  else if(marking){px(-1,4,2,1,skin);px(6,4,2,1,skin);px(-1,3,1,1,skin);px(7,3,1,1,skin)}
   else{const sw=moving?fr%2:0;px(0,4+sw,1,3-sw,skin);px(6,5-sw,1,2+sw,skin)}
   px(2,0,3,3,skin);px(2,0,3,1,hair);px(2,1,1,1,hair);
   if(e.p.style===1)px(1,1,1,2,hair);
@@ -1616,9 +1714,12 @@ function drawPlayer(e,col){
   }
 }
 function drawDisc(){
-  const d=G.disc,fl=!!G.flight,X=sx(d.x+(fl?d.ox||0:0)),Y=sy(d.y+(fl?d.oy||0:0));
+  const d=G.disc,fl=!!G.flight;let X=sx(d.x+(fl?d.ox||0:0)),Y=sy(d.y+(fl?d.oy||0:0));
   ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(X-4,Y-1,8,3);
-  const Z=Y-Math.round(d.z*ZH)-6;
+  let Z=Y-Math.round(d.z*ZH)-6;
+  const hA=!fl&&G.holder>=0?G.off[G.holder].act:null;
+  if(hA&&hA.k==='sky')Z-=Math.round(16*Math.sin(Math.PI*clamp(hA.t/hA.d,0,1)))+8;
+  if(hA&&hA.k==='layout'&&hA.t<LAY_UP){const h=G.off[G.holder],lift=hA.t<LAY_AIR?Math.round(9*Math.sin(Math.PI*hA.t/LAY_AIR)):0;X=sx(h.x)+hA.face*15;Z=sy(h.y)-6-lift}
   rect(X-5,Z,10,3,PAL.chalk);rect(X-3,Z-1,6,1,PAL.chalk);rect(X-4,Z+3,8,1,'#b9b5a6');
   if(G.flight){const sp=Math.floor(G.t*30)%2;rect(X-3+sp*4,Z,2,1,'#c6c2b2')}
 }
@@ -1739,6 +1840,7 @@ function render(){
   ents.sort((a,b)=>a[0].y-b[0].y);
   for(const[e,c]of ents)drawPlayer(e,c);
   if(G.phase!=='defense'&&G.phase!=='wait'&&G.phase!=='idle')drawDisc();
+  drawFx();
   G.aimR=null;drawAim();drawOpenDots();
   if(G.rain){ctx.fillStyle='rgba(200,215,230,.45)';for(const r of G.rainDrops)ctx.fillRect(Math.round(r.x),Math.round(r.y),1,7)}
   drawHUD();drawBanner();
