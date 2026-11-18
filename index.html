@@ -23,6 +23,7 @@
   --gold:#ffd25a;
   --red:#ff6b5d;
   --ink:#0b121a;
+  --grass:#4a9a50;
   --scrim:rgba(11,18,26,.82);
   --shadow:rgba(0,0,0,.4);
   --font-display:"Silkscreen","Courier New",monospace;
@@ -95,6 +96,18 @@ p{margin:0}
 .star-list{display:flex;flex-direction:column;gap:calc(var(--u)*3);font-size:calc(var(--u)*14)}
 .stars{color:var(--gold);letter-spacing:.06em;font-family:var(--font-body)}
 .conditions{font-size:calc(var(--u)*14);color:var(--dim);border-top:calc(var(--u)*2) dashed var(--panel-2);padding-top:calc(var(--u)*10)}
+/* offense style picker */
+.stylepick{display:flex;flex-direction:column;gap:calc(var(--u)*5)}
+.stylepick.ro{flex-direction:row;align-items:center;gap:calc(var(--u)*12)}
+.sgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:calc(var(--u)*6)}
+.sbtn{display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*3);background:var(--panel-2);border:calc(var(--u)*2) solid transparent;color:var(--chalk);
+  font-family:var(--font-body);font-size:calc(var(--u)*13);white-space:nowrap;padding:calc(var(--u)*4);cursor:pointer;min-width:0}
+.sbtn svg{width:100%;max-width:calc(var(--u)*92);height:auto;display:block}
+.sbtn.on{border-color:var(--gold);background:var(--ink)}.sbtn.on b{color:var(--gold)}
+.sbtn:focus-visible{outline:calc(var(--u)*2) solid var(--gold)}
+.stylepick.compact .sgrid{gap:calc(var(--u)*5)}.stylepick.compact .sbtn{font-size:calc(var(--u)*11);padding:calc(var(--u)*3)}
+.stylepick.ro .sbtn{width:calc(var(--u)*92);flex:none;cursor:default}
+.sd-f{fill:var(--grass)}.sd-h{fill:var(--gold)}.sd-c{fill:var(--sea)}.sd-d{fill:var(--chalk)}
 /* tables */
 table{border-collapse:collapse;width:100%;font-size:calc(var(--u)*14);font-variant-numeric:tabular-nums}
 th{font-family:var(--font-display);font-size:calc(var(--u)*10);color:var(--sea);text-align:left;padding:calc(var(--u)*3) calc(var(--u)*6);letter-spacing:.08em}
@@ -206,7 +219,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 20 · Nov 18';
+const VERSION='Version 21 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -514,17 +527,22 @@ function computeForce(){
   G.os=Math.abs(y-20)<6?(Math.random()<.5?1:-1):(y<20?-1:1);
   G.markAng=Math.atan2(-G.os,.35);
 }
-// Two handlers stay back (dump and swing). Everyone else lines up in a vertical stack, keeping
-// their place in line: G.stack runs front to back, and a cutter who finishes rejoins at the back.
+// Handlers stay back (in Vertical, the dump and swing spots). Everyone else cuts. Roles are set once per
+// possession by the style's handler count (styleRoles); whoever holds the disc keeps his role, so when a
+// cutter catches it every handler sets up around him. In Vertical the cutters keep their place in line:
+// G.stack runs front to back, and a cutter who finishes rejoins at the back.
 function assignSlots(){
   const h=G.holder;
-  const handlers=G.off.filter(e=>e.idx!==h&&e.p.pos==='H');
-  const cutters=G.off.filter(e=>e.idx!==h&&e.p.pos!=='H');
-  handlers.forEach((e,i)=>{if(i<2){e.slot=i;e.lane='H'}else cutters.push(e)});
+  for(const e of G.off)e.stay=null;
+  if(!G.off.some(e=>e.role))styleRoles(STYLE_HANDLERS[G.style]||2);
+  const handlers=G.off.filter(e=>e.idx!==h&&e.role==='H');
+  const cutters=G.off.filter(e=>e.idx!==h&&e.role!=='H');
+  handlers.forEach((e,i)=>{e.slot=i;e.lane='H'});
   for(const e of cutters)e.lane='C';
   const ids=new Set(cutters.map(e=>e.idx));
   G.stack=(G.stack||[]).filter(i=>ids.has(i));
   for(const e of cutters)if(!G.stack.includes(e.idx))G.stack.push(e.idx);
+  G.spots=G.style&&G.style!=='vert'?styleSetup(G.style):null;
 }
 function stackY(){return clamp(lerp(20,G.anchor.y,.3)-G.os*2,10,30)}
 function stackSpot(k,n){
@@ -533,6 +551,8 @@ function stackSpot(k,n){
   return[clamp(front+k*sp,1,107),stackY()];
 }
 function slotPos(e){
+  if(e.stay)return e.stay;
+  if(G.spots&&G.spots[e.idx])return G.spots[e.idx]; // Horizontal, 4-1, 1-4: his own spot in the style
   const a=G.anchor,os=G.os;
   if(e.lane==='H'){
     if(e.slot===0)return[clamp(a.x-4.5,.5,108),clamp(a.y-os*5,2,38)];
@@ -543,19 +563,23 @@ function slotPos(e){
 }
 function setupPossession(x,y,label){
   G.flight=null;
-  const hs=G.off.filter(e=>e.p.pos==='H').sort((a,b)=>b.p.thr-a.p.thr);
+  // the game's offense style runs on O-line points; everything else (and the title-screen demo) is Vertical
+  G.style=!G.demo&&G.pointKind==='O'&&STYLES.includes(G.styleChoice)?G.styleChoice:'vert';
+  const hs=styleRoles(STYLE_HANDLERS[G.style]);
   let h=hs[0]||G.off[0];
   const meEnt=G.off.find(e=>e.isMe);
   if(meEnt&&Math.random()<.35)h=meEnt;
   G.holder=h.idx;G.anchor={x,y};
   h.x=x;h.y=y;h.vx=h.vy=0;h.state='holder';
-  G.stack=shuffle(G.off.filter(e=>e!==h&&e.p.pos!=='H').map(e=>e.idx));
-  G.activeCut=-1;G.cutGap=.9;G.nextFrom=Math.random()<.5?'front':'back';
+  G.stack=shuffle(G.off.filter(e=>e!==h&&e.role==='C').map(e=>e.idx));
+  G.activeCut=-1;G.cutGap=.9;G.nextFrom=Math.random()<.5?'front':'back';G.double=false;G.swingT=rand(2,3.5);
+  styleOrder();
   computeForce();assignSlots();
+  const jit=G.style==='vert'?1:.3;
   for(const e of G.off){
     e.hist.length=0;
     if(e===h)continue;
-    const[tx,ty]=slotPos(e);e.x=tx+rand(-1,1);e.y=ty+rand(-1,1);e.vx=e.vy=0;e.state=e.lane==='H'?'handler':'stack';
+    const[tx,ty]=slotPos(e);e.x=tx+rand(-jit,jit);e.y=ty+rand(-jit,jit);e.vx=e.vy=0;e.state=e.lane==='H'?'handler':'stack';
   }
   for(const d of G.def){
     const o=G.off[d.idx];d.vx=d.vy=0;d.bite=0;
@@ -582,7 +606,8 @@ function startPoint(kind){
   G.lastLine=G.myLine.slice();G.load=0;
   for(const p of G.myLine.concat(G.oppLine))G.pp[p.id]=(G.pp[p.id]||0)+1;
   buildEnts();
-  if(kind==='O'){let x=rand(12,34);if(x<20)x=20;setupPossession(x,rand(8,32),'OFFENSE')}
+  G.pointKind=kind;
+  if(kind==='O'){let x=rand(12,34);if(x<20)x=20;setupPossession(x,rand(8,32),G.styleChoice&&G.styleChoice!=='vert'?`OFFENSE · ${STYLE_NAME[G.styleChoice].toUpperCase()}`:'OFFENSE')}
   else{G.phase='wait';later(()=>startDefense(rand(80,90),true),200)}
 }
 function callTimeout(){
@@ -708,7 +733,7 @@ function updateOff(e,dt,ph){
     case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e,true);break;
     case'sclear':e.timer-=dt;
       if(e.wp){steer(e,e.wp[0],e.wp[1],.95,dt,60,8);if(dist(e.x,e.y,e.wp[0],e.wp[1])<1.2)e.wp=null}
-      else{const[tx,ty]=slotPos(e);steer(e,tx,ty,.8,dt,50,6);if(dist(e.x,e.y,tx,ty)<.8)e.state='stack'}
+      else{const[tx,ty]=slotPos(e);steer(e,tx,ty,.8,dt,50,6);if(dist(e.x,e.y,tx,ty)<.8||e.timer<-2.5)e.state=e.lane==='H'?'handler':'stack'}
       break;
     default:{const[tx,ty]=slotPos(e);hold(e,tx,ty,dt)}
   }
@@ -730,37 +755,220 @@ function updateDef(d,dt,ph){
   else guardSteer(d,o,dt);
   if(d.bite>0)d.bite=Math.max(0,d.bite-dt*.35);
 }
-// Stack discipline: one cutter in the lane at a time. The front of the stack cuts under, the back
-// goes deep, alternating. Nobody else moves until the last cutter has cleared out of the lane.
+// Stack discipline, every style: the next cutter goes as soon as the one ahead has made his cut and
+// is clearing (now and then two go close together), and never more than two cutters are in the lane.
+// styleCuts picks who goes, under or deep, and to which side.
+function inLane(e){return e.state==='jab'||e.state==='scut'||e.state==='linger'}
+// an under cutter has made his cut when he gets there; a deep cutter once he's a second into his sprint
+function madeCut(e){return!(e.state==='jab'||(e.state==='scut'&&!(e.deep&&e.timer<1.2)))}
 function stackLogic(dt){
+  if(G.style==='horiz')swingLogic(dt);
   const act=G.activeCut>=0?G.off[G.activeCut]:null;
-  if(act&&act.idx!==G.holder){
-    if(act.state==='jab'||act.state==='scut'||act.state==='linger')return;
-    if(act.state==='sclear'&&act.timer>1.15)return;
-  }
+  if(act&&act.idx!==G.holder&&!madeCut(act)&&!G.double)return; // he hasn't made his cut yet
+  if(G.off.filter(e=>e.lane==='C'&&inLane(e)).length>=2)return;
   G.cutGap-=dt;if(G.cutGap>0)return;
-  const ready=G.stack.map(i=>G.off[i]).filter(e=>e.state==='stack'&&e.idx!==G.holder);
-  if(!ready.length)return;
-  const deep=G.nextFrom==='back'&&ready.length>1;
-  const e=deep?ready[ready.length-1]:ready[0];
-  G.nextFrom=G.nextFrom==='back'?'front':'back';
-  startStackCut(e,deep);
-  G.activeCut=e.idx;G.cutGap=rand(.15,.4);
+  styleCuts(dt);
 }
-function startStackCut(e,deep){
-  const a=G.anchor,os=G.os,y0=stackY();
+// Vertical: the front of the stack cuts under, the back goes deep, alternating. side: 'live' (the open
+// side, G.os) or 'dead'.
+function startStackCut(e,deep,side){
+  const a=G.anchor,os=G.os,sd=side==='dead'?-os:os,y0=stackY();
   e.deep=deep;e.state='jab';e.timer=.26;
-  e.jx=clamp(e.x+(deep?-1.8:2),.5,108);e.jy=clamp(e.y-os*.8,1,39);
-  if(deep){e.tx=clamp(a.x+rand(25,38),a.x+15,107.5);e.ty=clamp(y0+os*rand(4,11),2.5,37.5)}
-  else{e.tx=clamp(a.x+rand(7,12),.5,100);e.ty=clamp(y0+os*rand(8,13),1.5,38.5)}
+  e.jx=clamp(e.x+(deep?-1.8:2),.5,108);e.jy=clamp(e.y-sd*.8,1,39);
+  if(deep){e.tx=clamp(a.x+rand(25,38),a.x+15,107.5);e.ty=clamp(y0+sd*rand(4,11),2.5,37.5)}
+  else{e.tx=clamp(a.x+rand(7,12),.5,100);e.ty=clamp(y0+sd*rand(8,13),1.5,38.5)}
   // does the defender buy the jab? Quick cutters against weak defenders get bigger bites.
   const d=G.def[e.idx];
   e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
 }
+
+// ---------------------------------------------------------------- offense styles
+// Four ways to line up on offense. Vertical is the classic stack and the default. Horizontal, 4-1 and 1-4
+// give every player his own spot, worked out from the disc each time it moves: "disc side" is the open
+// side (G.os) and "far side" the other, so a 4-1 is a 4-1 whichever side the disc is on. Cuts are always
+// automatic: about 75% go to the live side, and the order and gaps change every point.
+const STYLES=['vert','horiz','41','14'];
+const STYLE_NAME={vert:'Vertical',horiz:'Horizontal','41':'4-1','14':'1-4'};
+const STYLE_HANDLERS={vert:2,horiz:3,'41':2,'14':2};
+const STYLE_NOTE={vert:'2 handlers and a 5-man stack. The front cuts under, the back goes deep.',
+  horiz:'3 handlers across the back, 4 cutters across the field. The handlers swing it side to side.',
+  '41':'4 cutters on the disc side go in turn. The 1 on the far side is the deep threat.',
+  '14':'The 1 on the disc side works under. The 4 on the far side go deep.'};
+const STYLE_KEY='pacific-huck-style',LIVE_SHARE=.75,SKIP_TURN=.15;
+// coach games keep the style in the program save; quick games keep their own
+function getStyle(kind){
+  if(kind==='coach'&&CAR)return STYLES.includes(CAR.style)?CAR.style:'vert';
+  try{const v=localStorage.getItem(STYLE_KEY);return STYLES.includes(v)?v:'vert'}catch(e){return'vert'}
+}
+function setStyle(kind,v){
+  if(kind==='coach'&&CAR){CAR.style=v;saveProgram()}
+  else try{localStorage.setItem(STYLE_KEY,v)}catch(e){}
+}
+// who handles: handler-position players (best throwers first), topped up with the best throwers on the line
+function styleRoles(nH){
+  const byThr=a=>a.slice().sort((x,y)=>y.p.thr-x.p.thr);
+  let hs=byThr(G.off.filter(e=>e.p.pos==='H')).slice(0,nH);
+  if(hs.length<nH)hs=hs.concat(byThr(G.off.filter(e=>!hs.includes(e))).slice(0,nH-hs.length));
+  for(const e of G.off)e.role=hs.includes(e)?'H':'C';
+  return hs;
+}
+// each cutter's slot in the formation and the order the cuts go in, new every possession
+function styleOrder(){
+  const st=G.style,cs=G.off.filter(e=>e.role==='C');
+  for(const e of G.off)e.cslot=-1;
+  G.cutOrder=[];G.cutPtr=0;
+  if(st==='vert')return;
+  let lone=null;
+  if(st==='41')lone=cs.slice().sort((a,b)=>b.p.spd-a.p.spd)[0];                     // fastest man goes deep alone
+  if(st==='14')lone=cs.slice().sort((a,b)=>(b.p.spd+b.p.hnd)-(a.p.spd+a.p.hnd))[0];  // best all-round cutter works under alone
+  const rest=shuffle(cs.filter(e=>e!==lone));
+  if(st==='horiz'){
+    rest.forEach((e,i)=>e.cslot=i); // 0 to 3, sideline to sideline
+    G.cutOrder=[{pick:'mid',type:'under'},{pick:'edge',type:'deep'}];G.cutPtr=randi(0,1);
+  }else if(st==='41'){
+    rest.forEach((e,i)=>e.cslot=i);lone.cslot=4; // 0 is the front of the group
+    const g=i=>({c:i,type:Math.random()<.6?'under':'deep'});
+    G.cutOrder=[g(0),g(1),{c:4,type:'deep'},g(2),g(3),{c:4,type:'deep'}];
+  }else{
+    lone.cslot=0;rest.forEach((e,i)=>e.cslot=i+1);
+    G.cutOrder=[{c:0,type:'under'},{c:1,type:'deep'},{c:2,type:'deep'},{c:0,type:'under'},{c:3,type:'deep'},{c:4,type:'deep'}];
+  }
+}
+// where everyone stands right now (not used by Vertical, which keeps its moving stack): {idx:[x,y]}
+function styleSetup(st){
+  const a=G.anchor,os=G.os,S={},cl=(x,y)=>[clamp(x,.5,107.5),clamp(y,1.5,38.5)];
+  const hs=G.off.filter(e=>e.idx!==G.holder&&e.lane==='H'),cs=G.off.filter(e=>e.idx!==G.holder&&e.lane==='C');
+  if(st==='horiz'){
+    // handlers spread across the width behind the disc, about 11 yards apart (one on each side when
+    // there's room); if a cutter has the disc, the third handler sets up right behind him
+    const spots=[];
+    for(const o of [11,-11,22,-22]){const y=a.y+o;if(y>=3&&y<=37&&spots.length<2)spots.push(cl(a.x-3,y))}
+    if(hs.length>2)spots.push(cl(a.x-5,a.y));
+    const byY=hs.slice().sort((p,q)=>p.y-q.y),sp=spots.slice(0,byY.length).sort((p,q)=>p[1]-q[1]);
+    byY.forEach((e,i)=>S[e.idx]=sp[i]);
+  }else for(const e of hs)S[e.idx]=e.slot===0?cl(a.x-4.5,a.y-os*5):cl(a.x+1,a.y-os*12); // Vertical's dump and swing
+  const front=a.x+11,col=(k,n)=>{let sp=3;if(n>1&&front+(n-1)*sp>106)sp=Math.max(1.6,(106-front)/(n-1));return front+k*sp};
+  for(const e of cs){
+    const k=e.cslot;
+    if(st==='horiz')S[e.idx]=cl(front,[5,15,25,35][k]??20);           // side by side across the field
+    else if(st==='41')S[e.idx]=k<4?cl(col(k,4),20+os*9):cl(a.x+16,20-os*12);  // 4 on the disc side, 1 far
+    else S[e.idx]=k===0?cl(a.x+12,20+os*10):cl(col(k-1,4),20-os*10);  // 1 on the disc side, 4 far
+  }
+  // nobody closer than 2 yards to anyone (the holder stays put), cutters 10+ yards upfield, all on the field
+  const P=Object.keys(S).map(k=>({e:G.off[k],s:S[k]})),minX=Math.min(a.x+10,105);
+  const all=P.concat([{e:null,s:[a.x,a.y],fixed:true}]);
+  for(let it=0;it<16;it++)for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
+    const A=all[i],B=all[j],dx=B.s[0]-A.s[0],dy=B.s[1]-A.s[1],d=Math.hypot(dx,dy);
+    if(d>=2.05)continue;
+    const ux=d?dx/d:0,uy=d?dy/d:1,push=(2.05-d)/(A.fixed||B.fixed?1:2);
+    if(!A.fixed){A.s[0]-=ux*push;A.s[1]-=uy*push}
+    if(!B.fixed){B.s[0]+=ux*push;B.s[1]+=uy*push}
+    for(const Q of [A,B])if(!Q.fixed){const c=cl(Q.s[0],Q.s[1]);if(Q.e.lane==='C')c[0]=Math.max(c[0],minX);Q.s[0]=c[0];Q.s[1]=c[1]}
+  }
+  return S;
+}
+// pick the next cutter, the kind of cut and the side for this style
+function styleCuts(dt){
+  const st=G.style||'vert';
+  const ready=G.stack.map(i=>G.off[i]).filter(e=>e&&e.state==='stack'&&e.idx!==G.holder);
+  if(!ready.length)return;
+  const side=Math.random()<LIVE_SHARE?'live':'dead';
+  let e=null,type='under';
+  if(st==='vert'){
+    const deep=G.nextFrom==='back'&&ready.length>1;
+    let i=deep?ready.length-1:0;
+    if(ready.length>2&&Math.random()<SKIP_TURN)i+=deep?-1:1; // the next man passes on his turn
+    e=ready[i];type=deep?'deep':'under';
+    G.nextFrom=G.nextFrom==='back'?'front':'back';
+    startStackCut(e,deep,side);
+  }else{
+    if(Math.random()<SKIP_TURN)G.cutPtr++; // the next man passes on his turn
+    const ord=G.cutOrder;
+    for(let n=0;n<ord.length&&!e;n++){
+      const o=ord[(G.cutPtr+n)%ord.length];
+      e=styleWho(o,side,ready);
+      if(e){type=o.type;G.cutPtr+=n+1}
+    }
+    if(!e)return; // whoever's up is still getting back to his spot
+    startStyleCut(e,type,side);
+  }
+  G.activeCut=e.idx;
+  // vary the rhythm: usually a short gap, sometimes a pause, sometimes two go close together
+  const r=Math.random();
+  G.double=r<.12;
+  G.cutGap=G.double?rand(.25,.5):r<.3?rand(.7,1.3):rand(.15,.5);
+  if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:st==='vert'?'s'+G.stack.indexOf(e.idx):e.cslot,type,side});
+}
+// Horizontal picks by kind: an edge cutter goes deep down his sideline, a middle cutter comes under.
+// The one on the side the cut goes to takes it; if he isn't back yet, the other one crosses over.
+function styleWho(o,side,ready){
+  if(o.c!=null)return ready.find(e=>e.cslot===o.c)||null;
+  const kind=o.pick==='edge'?[0,3]:[1,2],sd=side==='live'?G.os:-G.os;
+  return ready.filter(e=>kind.includes(e.cslot)).sort((p,q)=>sd*(slotPos(q)[1]-20)-sd*(slotPos(p)[1]-20))[0]||null;
+}
+function startStyleCut(e,type,side){
+  const a=G.anchor,sd=side==='live'?G.os:-G.os,home=slotPos(e);
+  let tx,ty;
+  if(type==='under'){tx=a.x+(G.style==='horiz'?rand(4,8):rand(6,11));ty=lerp(20,a.y,.45)+sd*rand(6,11)}
+  else{
+    tx=clamp(a.x+rand(25,36),a.x+15,107.5);
+    const edge=G.style==='horiz'&&Math.sign(home[1]-20)===sd;
+    ty=20+sd*(edge?rand(11,16):rand(5,12));
+  }
+  e.tx=clamp(tx,.5,type==='under'?100:107.5);e.ty=clamp(ty,2,38);e.deep=type==='deep';
+  e.state='jab';e.timer=.26;
+  // sell it the other way first
+  const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
+  e.jx=clamp(e.x-dx/L*1.8,.5,108);e.jy=clamp(e.y-dy/L*1.8,1,39);
+  const d=G.def[e.idx];
+  e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
+}
+// Horizontal: every few seconds the handler farthest from the live side swings across to it
+function swingLogic(dt){
+  G.swingT-=dt;if(G.swingT>0)return;
+  const a=G.anchor,os=G.os;
+  const hs=G.off.filter(e=>e.lane==='H'&&e.idx!==G.holder&&e.state==='handler').sort((p,q)=>os*(p.y-q.y));
+  if(!hs.length||stallNum()>=6){G.swingT=.6;return}
+  const e=hs[0];
+  let side='live',ty=clamp(a.y+os*rand(6,10),1.5,38.5);
+  if(Math.abs(ty-a.y)<4){side='dead';ty=clamp(a.y-os*rand(7,11),1.5,38.5)} // no room at the sideline
+  e.tx=clamp(a.x-rand(1,3),.5,107);e.ty=ty;e.deep=false;e.state='jab';e.timer=.18;
+  const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
+  e.jx=clamp(e.x-dx/L*1.2,.5,108);e.jy=clamp(e.y-dy/L*1.2,1,39);
+  e.pendBite=rand(0,.15);
+  G.swingT=rand(2.5,4.5);
+  if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:'H',type:'swing',side});
+}
+// a tiny field per style: downfield runs left to right, the disc side is at the bottom
+function styleDiagram(st){
+  const Hd=(x,y)=>`<rect class="sd-h" x="${x-1.6}" y="${y-1.6}" width="3.2" height="3.2"/>`,Cd=(x,y)=>`<circle class="sd-c" cx="${x}" cy="${y}" r="1.7"/>`;
+  const pts={vert:[[Hd,10,26],[Hd,5,21],[Cd,21,18],[Cd,26,18],[Cd,31,18],[Cd,36,18],[Cd,41,18]],
+    horiz:[[Hd,10,27],[Hd,8,16],[Hd,8,5.5],[Cd,24,4.5],[Cd,24,13],[Cd,24,21.5],[Cd,24,30]],
+    '41':[[Hd,10,26],[Hd,5,21],[Cd,21,28],[Cd,26,28],[Cd,31,28],[Cd,36,28],[Cd,31,7]],
+    '14':[[Hd,10,26],[Hd,5,21],[Cd,23,28],[Cd,21,7],[Cd,26,7],[Cd,31,7],[Cd,36,7]]}[st];
+  return`<svg viewBox="0 0 48 34" aria-hidden="true"><rect class="sd-f" width="48" height="34"/>${pts.map(([f,x,y])=>f(x,y)).join('')}<circle class="sd-d" cx="11.7" cy="23.6" r="1"/></svg>`;
+}
+// the four style buttons. mode: 'ro' just shows the current one (coach pre-game), 'compact' drops the
+// description line (the hub, where space is tight; it's in each button's tooltip instead)
+function showStylePicker(el,kind,mode){
+  if(!el)return;
+  const cur=getStyle(kind);
+  if(mode==='ro'){el.innerHTML=`<div class="stylepick ro"><div class="sbtn on">${styleDiagram(cur)}<b>${STYLE_NAME[cur]}</b></div><div><div class="eyebrow">Offense style</div><div class="dim small">${STYLE_NOTE[cur]} Used on O-line points. Change it from the hub.</div></div></div>`;return}
+  el.innerHTML=`<div class="stylepick ${mode||''}"><div class="row between"><span class="eyebrow">Offense style</span>${mode==='compact'?'':`<span class="dim small">${STYLE_NOTE[cur]}</span>`}</div>
+    <div class="sgrid">${STYLES.map(v=>`<button class="sbtn ${v===cur?'on':''}" data-style="${v}" aria-pressed="${v===cur}" title="${STYLE_NAME[v]}: ${STYLE_NOTE[v]}">${styleDiagram(v)}<b>${STYLE_NAME[v]}</b></button>`).join('')}</div></div>`;
+  el.querySelectorAll('[data-style]').forEach(b=>b.addEventListener('click',()=>{
+    const v=b.dataset.style;setStyle(kind,v);
+    if(G&&!G.demo&&G.phase==='idle')G.styleChoice=v; // pre-game: it's for the game about to start
+    SFX.click();showStylePicker(el,kind,mode);
+    const nb=el.querySelector(`[data-style="${v}"]`);if(nb)nb.focus();
+  }));
+}
+
 // Get out of the lane in one move: an under cutter peels off toward the back of the stack on
 // the break side, a deep cutter turns and comes back up the break side.
 function clearOut(e,toBack){
   e.state='sclear';e.timer=1.6;
+  if(G.spots||e.lane==='H'){e.wp=null;return} // other styles (and handlers): straight back to his own spot
   if(toBack&&G.stack.includes(e.idx)){G.stack.splice(G.stack.indexOf(e.idx),1);G.stack.push(e.idx)}
   const back=stackSpot(Math.max(0,G.stack.length-1),Math.max(1,G.stack.length))[0];
   e.wp=[clamp(e.deep?e.x-3:Math.min(back-2,e.x+8),1,107),clamp(stackY()-G.os*6,2,38)];
@@ -923,7 +1131,7 @@ function throwDisc(type,ax,ay,ai){
   const L=Math.hypot(tx-h.x,ty-h.y)||1;
   G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower,bend};
   G.holder=-1;G.phase='flight';
-  h.state='clear';h.timer=1;
+  h.state='clear';h.timer=1;h.stay=[h.x,h.y]; // he follows through where he is until someone catches it
   const rcv=chooseReceiver(tx,ty,thrower,T);
   G.flight.rcv=rcv?rcv.idx:-1;
   if(rcv){
@@ -1011,7 +1219,7 @@ function doCatch(e,f,label){
   G.phase='live';G.settle=.28;G.stallT=0;G.markerSet=false;G.resetCut=false;G.fake=0;
   computeForce();assignSlots();
   for(const o of G.off)if(o!==e&&(o.state==='jab'||o.state==='scut'||o.state==='linger'))clearOut(o,true);
-  G.activeCut=-1;G.cutGap=rand(.3,.6);
+  G.activeCut=-1;G.cutGap=rand(.3,.6);G.double=false;
   for(const d of G.def)d.state=d.idx===e.idx?'mark':'guard';
 }
 function goal(e,thrEnt){
@@ -1053,7 +1261,8 @@ function liveLogic(dt){
   stackLogic(dt);
   if(!G.resetCut&&stallNum()>=6){
     G.resetCut=true;
-    const dump=G.off.find(e=>e.lane==='H'&&e.slot===0&&e.idx!==G.holder);
+    const hs=G.off.filter(e=>e.lane==='H'&&e.idx!==G.holder),a=G.anchor;
+    const dump=G.style==='horiz'?hs.sort((p,q)=>dist(p.x,p.y,a.x,a.y)-dist(q.x,q.y,a.x,a.y))[0]:hs.find(e=>e.slot===0);
     if(dump){dump.state='cut';dump.timer=1.3;dump.tx=clamp(G.anchor.x-rand(2.5,4),.5,107);dump.ty=clamp(G.anchor.y+G.os*rand(5,8),1.5,38.5)}
   }
   if(G.demo&&G.settle<=0){
@@ -1092,6 +1301,13 @@ function update(dt){
     for(const e of G.off)integrate(e,dt);
     for(const e of G.def)integrate(e,dt);
     for(const o of G.off)for(const d of G.def)if(o.idx!==G.holder||d.state!=='mark')separate(o,d);
+    // teammates don't run through each other either (the holder stays on his pivot)
+    for(let i=0;i<7;i++)for(let j=i+1;j<7;j++){
+      const A=G.off[i],B=G.off[j];
+      if(A.idx!==G.holder&&B.idx!==G.holder){separate(A,B,.6);continue}
+      const m=A.idx===G.holder?B:A,h=A.idx===G.holder?A:B,dx=m.x-h.x,dy=m.y-h.y,d=Math.hypot(dx,dy);
+      if(d<.6&&d>1e-4){m.x=h.x+dx/d*.6;m.y=h.y+dy/d*.6}
+    }
     if(G.phase==='flight')updateFlight(dt);
     if(G.holder>=0){
       const h=G.off[G.holder];
@@ -1544,6 +1760,7 @@ function showHow(back){
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
         <li>Rosters have 14 players. Before every point you pick seven: an O-line when you receive, a D-line when you pull. Players who stay on tire and slow down, so rotate.</li>
         <li>Subs only happen between points, unless someone gets hurt on a layout or a sky battle.</li>
+        <li>Pick an offense style before the game: Vertical, Horizontal, 4-1 or 1-4. Head coach mode sets it in the hub; quick games set it on the pre-game screen. It runs on your O-line points.</li>
       </ul>
     </div>
     <div class="row end"><button class="btn" id="back" data-primary>Got it <span class="kbd">Enter</span></button></div>
@@ -1566,6 +1783,7 @@ function pregame(o){
   clearTimers();
   newMatch({me:o.me,opp:o.opp,home:o.home,career:o.career,meId:o.meId,onEnd:o.onEnd,label:o.label,savedLines:o.savedLines,cond:o.cond});
   G.phase='idle';
+  G.styleChoice=getStyle(o.career?'coach':'quick');
   setupPossession(25,20,'');G.phase='idle';
   const v=G.venue;
   const side=(t,ro,right)=>`<div class="side ${right?'right':''}">${jersey(t)}<h2>${esc(t.name)}</h2><div class="dim">${esc(t.city)}, ${t.st}</div>
@@ -1574,9 +1792,11 @@ function pregame(o){
   show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*780)">
     <div class="eyebrow">${esc(o.label||'Quick game')}</div>
     <div class="versus">${side(o.me.team,o.me.ro)}<div class="vs">VS</div>${side(o.opp.team,o.opp.ro,true)}</div>
+    <div id="stylepick"></div>
     <p class="conditions">At ${esc(v.name)}, ${esc(v.city)}, ${v.st}. ${G.rain?'Light drizzle':G.pnw?'Overcast':'Clear, sun going down'}. Wind ${G.wind.mph} mph${G.wind.mph>=10?', so hucks will drift':''}. First to ${G.target}, half at ${Math.ceil(G.target/2)}.</p>
     <div class="row between"><button class="btn alt" id="pback">Back</button><button class="btn" id="pull" data-primary>Line up <span class="kbd">Enter</span></button></div>
   </div></div>`);
+  showStylePicker(document.getElementById('stylepick'),o.career?'coach':'quick',o.career?'ro':'');
   on('pback',()=>{if(o.back)o.back();else showTitle()});
   on('pull',()=>{ui.innerHTML='';SFX.whistle();nextPoint()});
 }
@@ -1608,6 +1828,8 @@ let CAR=null; // the program being played
 function migrate(c){
   if(!c||!c.rosters)return null;
   if(c.me&&c.me.sta==null)c.me.sta=3;
+  if(c.mode==='coach'&&!STYLES.includes(c.style))c.style='vert'; // saves from before offense styles
+  delete c.playbook; // left over from the removed playbook
   for(const t of TEAMS){
     if(!c.rosters[t.id]){c.prestige[t.id]=t.elite?5:randi(1,5);c.rosters[t.id]=genRoster(Math.random,c.prestige[t.id],t.elite)}
     // saves from before deeper rosters and stamina
@@ -1744,7 +1966,7 @@ function startCoach(teamId){
   for(const t of TEAMS){prestige[t.id]=t.elite?5:randi(1,5);rosters[t.id]=genRoster(Math.random,prestige[t.id],t.elite)}
   const ro=rosters[teamId];
   CAR={v:1,mode:'coach',teamId,year:1,cc:8,fac:{train:1,cond:1,scout:1},lines:{O:bestLine(ro,'O').map(p=>p.id),D:bestLine(ro,'D').map(p=>p.id)},
-    rosters,prestige,titles:0,history:[],totals:{gp:0,w:0,l:0},awards:[],offseason:null};
+    rosters,prestige,titles:0,history:[],totals:{gp:0,w:0,l:0},awards:[],offseason:null,style:'vert'};
   newSeason();saveProgram();showCoachHub();
 }
 function seasonBlock(){
@@ -1769,6 +1991,7 @@ function showCoachHub(){
   if(ng){const o=TEAM(ng.opp),oro=rosterOf(ng.opp),star=topStars(oro,1)[0];
     next=`<div class="nextbox"><div class="eyebrow">${esc(ng.label)}</div><div class="big">${ng.home?'vs':'at'} ${esc(o.name)}</div>
       <div class="dim">OVR ${teamRating(oro).toFixed(1)} vs your ${teamRating(ro).toFixed(1)} · Their best: ${esc(pname(star))} ${'★'.repeat(starsOf(star))}</div>
+      <div id="stylepick"></div>
       <div class="row"><button class="btn" id="kplay" data-primary>Play game <span class="kbd">Enter</span></button></div></div>`;
   }else{
     next=`<div class="nextbox"><div class="eyebrow">Season ${CAR.year} complete</div><div class="big">${esc(S.finish||'')}</div>
@@ -1789,6 +2012,7 @@ function showCoachHub(){
     </div>
   </div></div>`);
   ui.querySelectorAll('tr[data-pid]').forEach(tr=>{const go=()=>{SFX.click();showCoachPlayer(tr.dataset.pid)};tr.addEventListener('click',go);tr.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();go()}})});
+  showStylePicker(document.getElementById('stylepick'),'coach','compact');
   on('kplay',playCoachGame);on('koff',startOffseason);
   on('klines',showLinesEditor);on('kfac',showFacilities);
   on('kquit',()=>{saveProgram();showTitle()});
@@ -2025,7 +2249,7 @@ function boot(data){
 }
 window.claude?.hot?.snapshot?.(()=>({coach:loadCoach()}));
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
-window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCoach:id=>startCoach(id),step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e),catchPct:o=>catchPct(o)};
+window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCoach:id=>startCoach(id),step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e),catchPct:o=>catchPct(o),setupPossession:(x,y,l)=>setupPossession(x,y,l),slotPos:e=>slotPos(e),stallNum:()=>stallNum()};
 })();
 </script>
 </body>
