@@ -18,6 +18,8 @@
   --gold:#ffd25a;
   --red:#ff6b5d;
   --ink:#0b121a;
+  --grass:#4a9a50;
+  --grass-2:#56a65c;
   --scrim:rgba(11,18,26,.82);
   --shadow:rgba(0,0,0,.4);
   --font-display:"Silkscreen","Courier New",monospace;
@@ -161,6 +163,39 @@ td.pos{font-family:var(--font-display);font-size:calc(var(--u)*11);color:var(--s
 .fac .btn{margin-top:auto;align-self:flex-start}
 .lvl{display:grid;grid-template-columns:repeat(5,1fr);gap:calc(var(--u)*3);height:calc(var(--u)*10)}
 .lvl span{background:var(--panel-2)}.lvl span.on{background:var(--gold)}
+/* playbook */
+.pbpanel{width:calc(var(--u)*930)}
+.pb-grid{display:grid;grid-template-columns:calc(var(--u)*200) minmax(0,1fr);gap:calc(var(--u)*14)}
+.pb-list{display:flex;flex-direction:column;gap:calc(var(--u)*5);min-width:0}
+.pb-item{display:flex;flex-direction:column;align-items:flex-start;gap:calc(var(--u)*1);background:var(--panel-2);border:calc(var(--u)*2) solid transparent;color:var(--chalk);
+  font-family:var(--font-body);font-size:calc(var(--u)*14);padding:calc(var(--u)*5) calc(var(--u)*8);cursor:pointer;text-align:left}
+.pb-item b{font-family:var(--font-display);color:var(--gold)}
+.pb-item small{font-size:calc(var(--u)*11);color:var(--dim)}
+.pb-item.on{border-color:var(--gold);background:var(--ink)}
+.pb-item:focus-visible{outline:calc(var(--u)*2) solid var(--gold)}
+.pb-actions{display:grid;grid-template-columns:1fr 1fr;gap:calc(var(--u)*5)}
+.pb-main{display:flex;flex-direction:column;gap:calc(var(--u)*6);min-width:0}
+.pb-counts{gap:calc(var(--u)*4)}
+#pbsvg{width:100%;height:auto;display:block;touch-action:none;user-select:none}
+.pb-field{fill:var(--grass)}.pb-zone{fill:var(--grass-2)}
+.pb-line{stroke:var(--chalk);stroke-width:1.5}.pb-dash{stroke:var(--chalk);stroke-width:1;stroke-dasharray:4 4;opacity:.55}
+.pb-lbl{fill:var(--chalk);font-family:var(--font-display);font-size:9px;opacity:.7}
+.pb-disc{fill:var(--chalk)}
+.pb-h{fill:var(--gold);stroke:var(--ink);stroke-width:1.5}.pb-c{fill:var(--sea);stroke:var(--ink);stroke-width:1.5}
+.pb-sel{stroke:var(--chalk);stroke-width:3}
+.pb-dot{cursor:grab}.pb-dot.holder{cursor:default}
+.pb-dot text{fill:var(--ink);font-family:var(--font-display);font-size:8.5px;font-weight:700;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+table.cuts td{padding:calc(var(--u)*2) calc(var(--u)*4)}
+table.cuts select,table.cuts input{font-family:var(--font-body);font-size:calc(var(--u)*13);background:var(--ink);color:var(--chalk);border:calc(var(--u)*1) solid var(--line);padding:calc(var(--u)*2) calc(var(--u)*4)}
+table.cuts input{width:calc(var(--u)*58)}
+.mini{font-family:var(--font-display);font-size:calc(var(--u)*11);background:var(--panel-2);color:var(--chalk);border:0;padding:calc(var(--u)*3) calc(var(--u)*7);cursor:pointer;margin-left:calc(var(--u)*2)}
+.mini[disabled]{opacity:.35;cursor:not-allowed}
+.rename.one{grid-template-columns:minmax(0,1fr) auto}
+.playrow{display:flex;flex-wrap:wrap;gap:calc(var(--u)*6);align-items:center}
+.pc{background:var(--panel-2);border:calc(var(--u)*2) solid transparent;color:var(--chalk);font-family:var(--font-body);font-size:calc(var(--u)*13);padding:calc(var(--u)*4) calc(var(--u)*8);cursor:pointer}
+.pc.on{border-color:var(--gold);background:var(--ink)}
+.pc b{font-family:var(--font-display);color:var(--gold);margin-right:calc(var(--u)*5)}
+.pc:focus-visible{outline:calc(var(--u)*2) solid var(--gold)}
 /* line calls */
 .lcpanel{width:calc(var(--u)*900)}
 .lc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:calc(var(--u)*4) calc(var(--u)*12)}
@@ -199,7 +234,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 17 · Nov 18';
+const VERSION='Version 18 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -377,7 +412,8 @@ window.addEventListener('mouseup',e=>{
 });
 window.addEventListener('keydown',e=>{
   if(e.key==='Shift')input.shift=true;
-  const typing=e.target&&e.target.tagName==='INPUT';
+  const tag=e.target&&e.target.tagName,typing=tag==='INPUT'||tag==='SELECT';
+  if(typing&&e.key==='Enter'&&(tag==='SELECT'||e.target.type==='number')){if(tag==='INPUT'){e.preventDefault();e.target.blur()}return}
   if(typing){if(e.key==='Enter'){const b=ui.querySelector('[data-primary]');if(b&&!b.disabled){e.preventDefault();b.click()}}return}
   const k=e.key.toLowerCase();
   if(k===' '&&G&&!G.demo&&!G.paused&&!ui.firstElementChild){e.preventDefault();pivotFake();return}
@@ -388,7 +424,7 @@ window.addEventListener('keydown',e=>{
   if(k==='escape'&&input.drag){e.preventDefault();input.drag=false;return} // cancel the throw you're lining up
   if((k==='escape'||k==='p')&&G&&!G.demo&&G.phase!=='over'&&G.phase!=='idle'){e.preventDefault();togglePause();return}
   if(k==='enter'){const b=ui.querySelector('[data-primary]');if(b&&!b.disabled){e.preventDefault();b.click()}return}
-  if(k==='1'||k==='2'){const b=ui.querySelector(`[data-key="${k}"]`);if(b){e.preventDefault();b.click()}}
+  if(/^[0-6]$/.test(k)){const b=ui.querySelector(`[data-key="${k}"]`);if(b){e.preventDefault();b.click()}}
   if(k==='arrowleft'||k==='arrowright'){const b=ui.querySelector(k==='arrowleft'?'[data-prev]':'[data-next]');if(b){e.preventDefault();b.click()}}
 });
 window.addEventListener('keyup',e=>{if(e.key==='Shift')input.shift=false});
@@ -523,10 +559,17 @@ function computeForce(){
 // Two handlers stay back (dump and swing). Everyone else lines up in a vertical stack, keeping
 // their place in line: G.stack runs front to back, and a cutter who finishes rejoins at the back.
 function assignSlots(){
-  const h=G.holder;
-  const handlers=G.off.filter(e=>e.idx!==h&&e.p.pos==='H');
-  const cutters=G.off.filter(e=>e.idx!==h&&e.p.pos!=='H');
-  handlers.forEach((e,i)=>{if(i<2){e.slot=i;e.lane='H'}else cutters.push(e)});
+  const h=G.holder,others=G.off.filter(e=>e.idx!==h),byThr=a=>a.slice().sort((x,y)=>y.p.thr-x.p.thr);
+  let handlers;
+  if(G.hCount){
+    // the formation says how many handle: handler-position players first, then the best throwers on the line
+    const need=G.hCount-1;
+    handlers=byThr(others.filter(e=>e.p.pos==='H')).slice(0,need);
+    if(handlers.length<need)handlers=handlers.concat(byThr(others.filter(e=>!handlers.includes(e))).slice(0,need-handlers.length));
+  }
+  else handlers=others.filter(e=>e.p.pos==='H').slice(0,2);
+  handlers.forEach((e,i)=>{e.slot=i;e.lane='H'});
+  const cutters=others.filter(e=>!handlers.includes(e));
   for(const e of cutters)e.lane='C';
   const ids=new Set(cutters.map(e=>e.idx));
   G.stack=(G.stack||[]).filter(i=>ids.has(i));
@@ -539,6 +582,8 @@ function stackSpot(k,n){
   return[clamp(front+k*sp,1,107),stackY()];
 }
 function slotPos(e){
+  // while a play is running (and it isn't the dynamic vertical stack), everyone holds his formation spot
+  if(holdsForm(e))return e.fpos;
   const a=G.anchor,os=G.os;
   if(e.lane==='H'){
     if(e.slot===0)return[clamp(a.x-4.5,.5,108),clamp(a.y-os*5,2,38)];
@@ -547,21 +592,26 @@ function slotPos(e){
   const k=G.stack?G.stack.indexOf(e.idx):-1;
   return stackSpot(k<0?(G.stack?G.stack.length:0):k,G.stack?G.stack.length:1);
 }
-function setupPossession(x,y,label){
-  G.flight=null;
-  const hs=G.off.filter(e=>e.p.pos==='H').sort((a,b)=>b.p.thr-a.p.thr);
-  let h=hs[0]||G.off[0];
-  const meEnt=G.off.find(e=>e.isMe);
-  if(meEnt&&Math.random()<.35)h=meEnt;
-  G.holder=h.idx;G.anchor={x,y};
+function setupPossession(x,y,label,play){
+  G.flight=null;G.play=null;G.hCount=0;
+  for(const e of G.off){e.fpos=null;e.pkey=null}
+  G.anchor={x,y};G.activeCut=-1;G.cutGap=.9;G.nextFrom=Math.random()<.5?'front':'back';
+  let h;
+  if(play&&validPlay(play)){computeForce();h=playSetup(play)}
+  else{
+    const hs=G.off.filter(e=>e.p.pos==='H').sort((a,b)=>b.p.thr-a.p.thr);
+    h=hs[0]||G.off[0];
+    const meEnt=G.off.find(e=>e.isMe);
+    if(meEnt&&Math.random()<.35)h=meEnt;
+    G.holder=h.idx;
+    G.stack=shuffle(G.off.filter(e=>e!==h&&e.p.pos!=='H').map(e=>e.idx));
+    computeForce();assignSlots();
+  }
   h.x=x;h.y=y;h.vx=h.vy=0;h.state='holder';
-  G.stack=shuffle(G.off.filter(e=>e!==h&&e.p.pos!=='H').map(e=>e.idx));
-  G.activeCut=-1;G.cutGap=.9;G.nextFrom=Math.random()<.5?'front':'back';
-  computeForce();assignSlots();
   for(const e of G.off){
     e.hist.length=0;
     if(e===h)continue;
-    const[tx,ty]=slotPos(e);e.x=tx+rand(-1,1);e.y=ty+rand(-1,1);e.vx=e.vy=0;e.state=e.lane==='H'?'handler':'stack';
+    const[tx,ty]=slotPos(e),jj=G.play?0:1;e.x=tx+rand(-jj,jj);e.y=ty+rand(-jj,jj);e.vx=e.vy=0;e.state=e.lane==='H'?'handler':'stack';
   }
   for(const d of G.def){
     const o=G.off[d.idx];d.vx=d.vy=0;d.bite=0;
@@ -588,7 +638,12 @@ function startPoint(kind){
   G.lastLine=G.myLine.slice();G.load=0;
   for(const p of G.myLine.concat(G.oppLine))G.pp[p.id]=(G.pp[p.id]||0)+1;
   buildEnts();
-  if(kind==='O'){let x=rand(12,34);if(x<20)x=20;setupPossession(x,rand(8,32),'OFFENSE')}
+  if(kind==='O'){
+    let x=rand(12,34);if(x<20)x=20;
+    const play=PLAY_CHOICE>=0?getPlaybook()[PLAY_CHOICE]:null;
+    if(play&&validPlay(play)){setupPossession(x,rand(8,32),'',play);banner(play.name.toUpperCase(),`${FORM_NAME[play.preset]} · ${play.cuts.length} cut${play.cuts.length===1?'':'s'}`,PAL.sea,1.6)}
+    else setupPossession(x,rand(8,32),'OFFENSE');
+  }
   else{G.phase='wait';later(()=>startDefense(rand(80,90),true),200)}
 }
 function callTimeout(){
@@ -625,6 +680,7 @@ function showLineCall(kind){
         <div class="row">${['O','D','F','S'].map(k=>`<button class="btn alt small" data-preset="${k}" ${k==='S'&&!G.lastLine?'disabled':''}>${NAMES[k]}</button>`).join('')}</div></div>
       <p class="dim">${kind==='O'?'You receive the pull.':`You pull to ${esc(G.opp.team.name)}.`} They're sending out ${oppStars.map(p=>`${esc(pname(p))} ${'★'.repeat(starsOf(p))}`).join(' and ')}. Pick seven. Tired legs run slower and jump lower, and bench time brings them back.</p>
       <div class="lc-grid">${ro.map(p=>lineRow(p,sel.has(p.id))).join('')}</div>
+      ${kind==='O'?playRow():''}
       <div class="row between">
         <label class="row" for="autol" style="gap:calc(var(--u)*8)"><input type="checkbox" id="autol" ${autoChk?'checked':''}> Let the coach call lines for the rest of this game</label>
         <div class="row"><span class="${chosen.length===7?'good':'bad'}">${chosen.length}/7</span><span class="dim">${nh} handler${nh===1?'':'s'} · energy ${avgE}</span>
@@ -642,6 +698,7 @@ function showLineCall(kind){
       if(line.length<7)line=line.concat(coachPick(G.me.ro,kind).filter(p=>!line.includes(p)).slice(0,7-line.length));
       sel=new Set(line.map(p=>p.id));SFX.click();render();
     }));
+    ui.querySelectorAll('[data-play]').forEach(b=>b.addEventListener('click',()=>{PLAY_CHOICE=+b.dataset.play;SFX.click();render()}));
     on('lcgo',()=>{
       if(sel.size!==7)return;
       if(autoChk){G.autoLines=true;setAutoLines(true)}
@@ -714,7 +771,7 @@ function updateOff(e,dt,ph){
     case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e,true);break;
     case'sclear':e.timer-=dt;
       if(e.wp){steer(e,e.wp[0],e.wp[1],.95,dt,60,8);if(dist(e.x,e.y,e.wp[0],e.wp[1])<1.2)e.wp=null}
-      else{const[tx,ty]=slotPos(e);steer(e,tx,ty,.8,dt,50,6);if(dist(e.x,e.y,tx,ty)<.8)e.state='stack'}
+      else{const[tx,ty]=slotPos(e);steer(e,tx,ty,.8,dt,50,6);if(dist(e.x,e.y,tx,ty)<.8)e.state=e.lane==='H'?'handler':'stack'}
       break;
     default:{const[tx,ty]=slotPos(e);hold(e,tx,ty,dt)}
   }
@@ -736,14 +793,12 @@ function updateDef(d,dt,ph){
   else guardSteer(d,o,dt);
   if(d.bite>0)d.bite=Math.max(0,d.bite-dt*.35);
 }
-// Stack discipline: one cutter in the lane at a time. The front of the stack cuts under, the back
-// goes deep, alternating. Nobody else moves until the last cutter has cleared out of the lane.
+// Stack discipline: the front of the stack cuts under, the back goes deep, alternating. The next
+// cutter goes as soon as the one ahead has made his cut and is clearing; never more than two in the lane.
 function stackLogic(dt){
   const act=G.activeCut>=0?G.off[G.activeCut]:null;
-  if(act&&act.idx!==G.holder){
-    if(act.state==='jab'||act.state==='scut'||act.state==='linger')return;
-    if(act.state==='sclear'&&act.timer>1.15)return;
-  }
+  if(act&&act.idx!==G.holder&&(act.state==='jab'||act.state==='scut'))return; // he hasn't made his cut yet
+  if(G.off.filter(e=>e.state==='jab'||e.state==='scut'||e.state==='linger').length>=2)return;
   G.cutGap-=dt;if(G.cutGap>0)return;
   const ready=G.stack.map(i=>G.off[i]).filter(e=>e.state==='stack'&&e.idx!==G.holder);
   if(!ready.length)return;
@@ -751,7 +806,7 @@ function stackLogic(dt){
   const e=deep?ready[ready.length-1]:ready[0];
   G.nextFrom=G.nextFrom==='back'?'front':'back';
   startStackCut(e,deep);
-  G.activeCut=e.idx;G.cutGap=rand(.15,.4);
+  G.activeCut=e.idx;G.cutGap=rand(.1,.3);
 }
 function startStackCut(e,deep){
   const a=G.anchor,os=G.os,y0=stackY();
@@ -767,6 +822,7 @@ function startStackCut(e,deep){
 // the break side, a deep cutter turns and comes back up the break side.
 function clearOut(e,toBack){
   e.state='sclear';e.timer=1.6;
+  if(holdsForm(e)||e.lane==='H'){e.wp=null;return}
   if(toBack&&G.stack.includes(e.idx)){G.stack.splice(G.stack.indexOf(e.idx),1);G.stack.push(e.idx)}
   const back=stackSpot(Math.max(0,G.stack.length-1),Math.max(1,G.stack.length))[0];
   e.wp=[clamp(e.deep?e.x-3:Math.min(back-2,e.x+8),1,107),clamp(stackY()-G.os*6,2,38)];
@@ -927,6 +983,7 @@ function throwDisc(type,ax,ay,ai){
     }
   }
   const L=Math.hypot(tx-h.x,ty-h.y)||1;
+  dropPlay();
   G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower,bend};
   G.holder=-1;G.phase='flight';
   h.state='clear';h.timer=1;
@@ -1015,6 +1072,7 @@ function doCatch(e,f,label){
   G.holder=e.idx;e.state='holder';e.vx*=.35;e.vy*=.35;
   G.anchor={x:e.x,y:e.y};
   G.phase='live';G.settle=.28;G.stallT=0;G.markerSet=false;G.resetCut=false;G.fake=0;
+  dropPlay();
   computeForce();assignSlots();
   for(const o of G.off)if(o!==e&&(o.state==='jab'||o.state==='scut'||o.state==='linger'))clearOut(o,true);
   G.activeCut=-1;G.cutGap=rand(.3,.6);
@@ -1056,7 +1114,8 @@ function liveLogic(dt){
     if(n!==before&&!G.demo&&n>1)SFX.stall(n);
     if(G.stallT>=9*.85+.4){stallOut();return}
   }
-  stackLogic(dt);
+  if(G.play&&(G.play.running||G.play.keep)&&stallNum()>=6)dropPlay();
+  if(G.play&&G.play.running)runPlay(dt);else stackLogic(dt);
   if(!G.resetCut&&stallNum()>=6){
     G.resetCut=true;
     const dump=G.off.find(e=>e.lane==='H'&&e.slot===0&&e.idx!==G.holder);
@@ -1555,6 +1614,7 @@ function showHow(back){
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
         <li>Rosters have 14 players. Before every point you pick seven: an O-line when you receive, a D-line when you pull. Players who stay on tire and slow down, so rotate.</li>
         <li>Subs only happen between points, unless someone gets hurt on a layout or a sky battle.</li>
+        <li>Before an O-line point you can call a play from your playbook (press 1 to 6 on the line call, or 0 for Auto). A play sets the formation and scripts the first cuts; once the stall hits 6 or the disc moves to someone new, your team goes back to the regular stack. Build plays in head coach mode under Playbook.</li>
       </ul>
     </div>
     <div class="row end"><button class="btn" id="back" data-primary>Got it <span class="kbd">Enter</span></button></div>
@@ -1619,6 +1679,7 @@ let CAR=null; // the program being played
 function migrate(c){
   if(!c||!c.rosters)return null;
   if(c.me&&c.me.sta==null)c.me.sta=3;
+  if(c.mode==='coach'&&(!Array.isArray(c.playbook)||c.playbook.some(pl=>!validPlay(pl))))c.playbook=(Array.isArray(c.playbook)?c.playbook.filter(validPlay):[]).concat(c.playbook&&c.playbook.length?[]:defaultPlaybook()).slice(0,6);
   for(const t of TEAMS){
     if(!c.rosters[t.id]){c.prestige[t.id]=t.elite?5:randi(1,5);c.rosters[t.id]=genRoster(Math.random,c.prestige[t.id],t.elite)}
     // saves from before deeper rosters and stamina
@@ -1754,7 +1815,7 @@ function startCoach(teamId){
   const rosters={},prestige={};
   for(const t of TEAMS){prestige[t.id]=t.elite?5:randi(1,5);rosters[t.id]=genRoster(Math.random,prestige[t.id],t.elite)}
   const ro=rosters[teamId];
-  CAR={v:1,mode:'coach',teamId,year:1,cc:8,fac:{train:1,cond:1,scout:1},lines:{O:bestLine(ro,'O').map(p=>p.id),D:bestLine(ro,'D').map(p=>p.id)},
+  CAR={v:1,mode:'coach',teamId,year:1,cc:8,playbook:defaultPlaybook(),fac:{train:1,cond:1,scout:1},lines:{O:bestLine(ro,'O').map(p=>p.id),D:bestLine(ro,'D').map(p=>p.id)},
     rosters,prestige,titles:0,history:[],totals:{gp:0,w:0,l:0},awards:[],offseason:null};
   newSeason();saveProgram();showCoachHub();
 }
@@ -1789,7 +1850,7 @@ function showCoachHub(){
   show(`<div class="screen"><div class="panel hub">
     <div class="row between"><div><div class="eyebrow">Head coach · Year ${CAR.year}</div><h2>${esc(t.name)}</h2>
       <div class="dim">${esc(t.city)}, ${t.st} · ${st.w}-${st.l} this year · ${CAR.titles} title${CAR.titles===1?'':'s'} · ${CAR.totals.w}-${CAR.totals.l} all-time</div></div>
-      <div class="row"><span class="ccbadge" title="Coaching credits: facilities and recruiting">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
+      <div class="row"><span class="ccbadge" title="Coaching credits: facilities and recruiting">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kpb">Playbook</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
     <div class="hub-grid coach">
       <section class="card">
         <div class="row between"><h3>Roster</h3><span class="dim small">Players earn skill points by playing. Click one to spend his.</span></div>
@@ -1801,7 +1862,7 @@ function showCoachHub(){
   </div></div>`);
   ui.querySelectorAll('tr[data-pid]').forEach(tr=>{const go=()=>{SFX.click();showCoachPlayer(tr.dataset.pid)};tr.addEventListener('click',go);tr.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();go()}})});
   on('kplay',playCoachGame);on('koff',startOffseason);
-  on('klines',showLinesEditor);on('kfac',showFacilities);
+  on('klines',showLinesEditor);on('kfac',showFacilities);on('kpb',()=>showPlaybook(showCoachHub));
   on('kquit',()=>{saveProgram();showTitle()});
 }
 function cleanName(v,max){return String(v||'').replace(/[<>]/g,'').replace(/\s+/g,' ').trim().slice(0,max)}
@@ -1846,7 +1907,7 @@ function showLinesEditor(){
     const nh=k=>ro.filter(p=>L[k].has(p.id)&&p.pos==='H').length;
     show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*760)">
       <div class="row between"><div><div class="eyebrow">Lines</div><h2>Set your O-line and D-line</h2></div>
-        <div class="row"><button class="btn alt small" id="bo">Best O-line</button><button class="btn alt small" id="bd">Best D-line</button><button class="btn alt small" id="lcancel">Cancel</button><button class="btn small" id="lsave" data-primary>Save lines</button></div></div>
+        <div class="row"><button class="btn alt small" id="bo">Best O-line</button><button class="btn alt small" id="bd">Best D-line</button><button class="btn alt small" id="lpb" title="Saves your lines, then opens the playbook">Playbook</button><button class="btn alt small" id="lcancel">Cancel</button><button class="btn small" id="lsave" data-primary>Save lines</button></div></div>
       <p class="dim small"><span class="${L.O.size===7?'good':'bad'}">O-line ${L.O.size}/7</span> (${nh('O')} handlers) · <span class="${L.D.size===7?'good':'bad'}">D-line ${L.D.size}/7</span> (${nh('D')} handlers). Line calls start from these. Anyone hurt or low on energy gets swapped for the best fresh sub, and you can still change any line before a point. A player can be on both lines, but he'll tire.</p>
       <table class="roster"><thead><tr><th>Player</th><th>Pos</th><th>Stars</th><th class="n">OFF</th><th class="n">DEF</th><th class="n">STA</th><th>O-line</th><th>D-line</th></tr></thead><tbody>
       ${ro.map(p=>`<tr><td class="trunc">#${p.num} ${esc(pname(p))}</td><td class="pos">${p.pos}</td><td class="stars">${'★'.repeat(starsOf(p))}</td><td class="n">${offScore(p).toFixed(1)}</td><td class="n">${defScore(p).toFixed(1)}</td><td class="n">${p.sta}</td>
@@ -1857,6 +1918,7 @@ function showLinesEditor(){
     on('bo',()=>{L.O=new Set(bestLine(ro,'O').map(p=>p.id));render()});
     on('bd',()=>{L.D=new Set(bestLine(ro,'D').map(p=>p.id));render()});
     on('lcancel',showCoachHub);
+    on('lpb',()=>{CAR.lines={O:[...L.O],D:[...L.D]};saveProgram();showPlaybook(showLinesEditor)});
     on('lsave',()=>{CAR.lines={O:[...L.O],D:[...L.D]};saveProgram();showCoachHub()});
   };
   render();
@@ -2021,6 +2083,315 @@ function finishRecruiting(){
   on('rhub',showCoachHub);
 }
 
+
+// ---------------------------------------------------------------- playbook
+// A play = a formation (where all 7 start) + a scripted cut sequence. Formations are stored in
+// "editor space": u = yards downfield of the disc, y = field position with the disc at REF_Y and the
+// disc side at the bottom. On the field they're mirrored so the disc side is whichever side the disc
+// is on (G.os). Handlers stay relative to the disc; cutters keep their place across the field.
+const REF_Y=28,PB_MAX=6;
+const FORM_NAME={vert:'Vertical stack',horiz:'Horizontal stack','23':'2-3','32':'3-2','14':'1-4','41':'4-1',custom:'Custom'};
+let PLAY_CHOICE=-1; // -1 = Auto (the regular stack). Stays until you change it.
+const jit=d=>Math.max(0,d+rand(-.3,.3));
+function presetDots(preset,h){
+  const D=[{k:'d0',role:'H',u:0,y:REF_Y,holder:true}];let n=1;
+  const add=(role,u,y)=>D.push({k:'d'+(n++),role,u,y});
+  if(preset==='horiz'){add('H',-4,REF_Y-12);add('H',-3,REF_Y+7);for(const y of [32,24,16,8])add('C',11,y)}
+  else if(preset==='vert'){add('H',-4.5,REF_Y-5);if(h===3)add('H',1,REF_Y-12);for(let k=0;k<7-h;k++)add('C',11+3*k,20.4)}
+  else{
+    const g={'23':[2,3],'32':[3,2],'14':[1,4],'41':[4,1]}[preset];
+    add('H',-4.5,REF_Y-5);
+    for(let k=0;k<g[0];k++)add('C',12+3*k,32); // disc side group
+    for(let k=0;k<g[1];k++)add('C',12+3*k,10); // far side group
+  }
+  return D;
+}
+function dotLabels(dots){let h=0,c=0;const L={};for(const d of dots){if(d.role==='H')L[d.k]='H'+(++h);else L[d.k]='C'+(++c)}return L}
+function validPlay(pl){
+  if(!pl||!Array.isArray(pl.dots)||pl.dots.length!==7||!pl.dots[0]||!pl.dots[0].holder||!Array.isArray(pl.cuts))return false;
+  const h=pl.dots.filter(q=>q.role==='H').length;return h>=2&&h<=3;
+}
+function newPlayId(){return 'pl'+Math.floor(Math.random()*1e9).toString(36)}
+function makePlay(name,preset,h,cuts){
+  const dots=presetDots(preset,h),L=dotLabels(dots),key=lab=>Object.keys(L).find(k=>L[k]===lab);
+  return{id:newPlayId(),name,preset,dots,cuts:cuts.map(c=>({who:key(c[0]),type:c[1],side:c[2],delay:c[3]})).filter(c=>c.who)};
+}
+function defaultPlaybook(){
+  return[
+    makePlay('Stack attack','vert',2,[['C1','under','live',.6],['C2','deep','live',1.1],['C3','under','dead',1.1]]),
+    makePlay('2-3 iso','23',2,[['C1','under','live',.5],['C3','deep','dead',1],['C2','deep','live',.9],['C4','under','dead',1]]),
+    makePlay('3-2 flood','32',2,[['C4','under','dead',.6],['C1','under','live',.8],['C2','deep','live',.9],['C5','deep','dead',1]]),
+    makePlay('Ho stack','horiz',3,[['C2','under','live',.6],['C3','deep','dead',1],['C1','deep','live',1],['C4','under','dead',1]]),
+    makePlay('Swing it','vert',3,[['H3','swing','dead',.4],['H2','dump','live',.9],['C1','under','dead',.9],['C2','deep','live',1]]),
+  ];
+}
+let DEFAULT_PB=null;
+function getPlaybook(){
+  if(CAR&&CAR.mode==='coach'&&Array.isArray(CAR.playbook))return CAR.playbook;
+  const K=loadCoach();if(K&&Array.isArray(K.playbook))return K.playbook;
+  return DEFAULT_PB||(DEFAULT_PB=defaultPlaybook());
+}
+function playRow(){
+  const pb=getPlaybook();if(!pb.length)return'';
+  return`<div class="playrow"><span class="eyebrow">Play</span>
+    <button class="pc ${PLAY_CHOICE<0||!pb[PLAY_CHOICE]?'on':''}" data-play="-1" data-key="0"><b>0</b>Auto</button>
+    ${pb.map((pl,i)=>`<button class="pc ${PLAY_CHOICE===i?'on':''}" data-play="${i}" data-key="${i+1}"><b>${i+1}</b>${esc(pl.name)} <span class="dim">${FORM_NAME[pl.preset]}</span></button>`).join('')}</div>`;
+}
+
+// ---- placing a formation on the field (playSetup) and running its cuts (runPlay)
+function playSetup(play){
+  const a=G.anchor,d=G.os,dots=play.dots;
+  const hD=dots.filter(q=>q.role==='H'),cD=dots.filter(q=>q.role==='C'),nH=hD.length;
+  const byThr=A=>A.slice().sort((x,y)=>y.p.thr-x.p.thr);
+  // handler slots: handler-position players by throwing, topped up with the best throwers on the line
+  let hs=byThr(G.off.filter(e=>e.p.pos==='H')).slice(0,nH);
+  if(hs.length<nH)hs=hs.concat(byThr(G.off.filter(e=>!hs.includes(e))).slice(0,nH-hs.length));
+  // everyone else cuts; the best cutters get the low numbers, so the first cuts go to them
+  const cs=G.off.filter(e=>!hs.includes(e)).sort((x,y)=>(y.p.spd+y.p.hnd)-(x.p.spd+x.p.hnd));
+  const holder=hs[0];G.holder=holder.idx;G.hCount=nH;
+  const spots=dots.map(q=>{
+    if(q.holder)return[a.x,a.y];
+    const w=REF_Y-q.y; // yards toward the far side, as drawn with the disc at REF_Y
+    return[a.x+q.u,q.role==='H'?a.y-d*w:20-d*(w-8)];
+  });
+  // near the end zone, squeeze cutters so they stay on the field
+  const maxU=Math.max(10,...cD.map(q=>q.u)),room=107-a.x;
+  if(maxU>room)dots.forEach((q,i)=>{if(q.role==='C')spots[i][0]=a.x+10+(q.u-10)*Math.max(0,room-10)/Math.max(1,maxU-10)});
+  // everyone on the field and at least two yards apart (the holder stays put)
+  const fit=s=>{s[0]=clamp(s[0],.5,107.5);s[1]=clamp(s[1],1.5,38.5)};
+  spots.forEach(fit);
+  for(let it=0;it<14;it++)for(let i=0;i<spots.length;i++)for(let j=i+1;j<spots.length;j++){
+    const A=spots[i],B=spots[j],dx=B[0]-A[0],dy=B[1]-A[1],dd=Math.hypot(dx,dy);
+    if(dd>=2)continue;
+    const push=(2-dd)/2+.01,ux=dd?dx/dd:0,uy=dd?dy/dd:1;
+    if(dots[i].holder){B[0]+=ux*push*2;B[1]+=uy*push*2}
+    else if(dots[j].holder){A[0]-=ux*push*2;A[1]-=uy*push*2}
+    else{A[0]-=ux*push;A[1]-=uy*push;B[0]+=ux*push;B[1]+=uy*push}
+    fit(A);fit(B);
+  }
+  hD.forEach((q,i)=>{const e=hs[i];if(!e)return;e.pkey=q.k;e.lane='H';e.slot=i-1;e.fpos=spots[dots.indexOf(q)]});
+  cD.forEach((q,i)=>{const e=cs[i];if(!e)return;e.pkey=q.k;e.lane='C';e.fpos=spots[dots.indexOf(q)]});
+  G.stack=cD.map((q,i)=>cs[i]).filter(Boolean).map(e=>e.idx);
+  G.play={play,i:0,t:0,running:true,dyn:play.preset==='vert',nextAt:play.cuts.length?jit(play.cuts[0].delay):0,waited:0};
+  return holder;
+}
+// where a scripted cut goes: live = the open side (G.os), dead = the other side
+function playCutTarget(type,side){
+  const a=G.anchor,sd=side==='live'?G.os:-G.os,mid=lerp(20,a.y,.5);
+  if(type==='under')return[clamp(a.x+rand(6,11),.5,100),clamp(mid+sd*rand(7,11),2.5,37.5)];
+  if(type==='deep')return[clamp(a.x+rand(25,36),a.x+15,107.5),clamp(20+sd*rand(6,12),3,37)];
+  if(type==='dump')return[clamp(a.x-rand(2.5,4),.5,107),clamp(a.y+sd*rand(5,8),1.5,38.5)];
+  return[clamp(a.x+rand(0,3),.5,107),clamp(a.y+sd*rand(9,14),2,38)]; // swing
+}
+function startPlayCut(e,c){
+  const[tx,ty]=playCutTarget(c.type,c.side);
+  e.tx=tx;e.ty=ty;e.deep=c.type==='deep';
+  e.state='jab';e.timer=c.type==='swing'||c.type==='dump'?.18:.26;
+  // sell it the other way first
+  const dx=tx-e.x,dy=ty-e.y,L=Math.hypot(dx,dy)||1;
+  e.jx=clamp(e.x-dx/L*1.8,.5,108);e.jy=clamp(e.y-dy/L*1.8,1,39);
+  const d=G.def[e.idx];
+  e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
+}
+function inCut(e){return e.state==='jab'||e.state==='scut'||e.state==='linger'}
+function runPlay(dt){
+  const P=G.play,cuts=P.play.cuts;P.t+=dt;
+  if(stallNum()>=6){dropPlay();return}
+  // script's done: the regular cut rotation takes over, from the formation, until the disc moves
+  if(P.i>=cuts.length){if(!G.off.some(e=>e.state==='jab'||e.state==='scut')){P.running=false;P.keep=true;G.activeCut=-1;G.cutGap=.25}return}
+  if(P.t<P.nextAt)return;
+  if(G.off.filter(inCut).length>=2)return; // at most two cutters in the lane at once
+  const c=cuts[P.i],e=G.off.find(o=>o.pkey===c.who);
+  const advance=()=>{P.i++;P.waited=0;P.nextAt=P.t+(cuts[P.i]?jit(cuts[P.i].delay):0)};
+  if(!e||e.idx===G.holder){advance();return} // he has the disc now: skip his cut
+  if(inCut(e)){P.waited+=dt;if(P.waited>1.2)advance();return}
+  startPlayCut(e,c);G.activeCut=e.idx;advance();
+}
+// back to the normal automatic stack for the rest of the possession; a cut in progress finishes
+function holdsForm(e){return!!(G.play&&(G.play.running||G.play.keep)&&!G.play.dyn&&e.fpos)}
+function dropPlay(){
+  if(!G.play||!(G.play.running||G.play.keep))return;
+  G.play.running=false;G.play.keep=false;
+  const act=G.off.find(e=>e.state==='jab'||e.state==='scut');G.activeCut=act?act.idx:-1;G.cutGap=.3;
+  for(const e of G.off)e.fpos=null;
+  assignSlots();
+}
+
+// ---- the playbook editor
+let PB_SEL=0;
+const PB_W=560,PB_H=192,pbX=u=>(u+16)*10,pbY=y=>8+y*4.4,pbU=px=>px/10-16,pbYf=py=>(py-8)/4.4;
+const CUT_TYPES={C:['under','deep'],H:['swing','dump']};
+const TYPE_NAME={under:'Under',deep:'Deep',swing:'Swing',dump:'Dump'};
+function flipType(t,role){return role==='H'?(t==='deep'?'swing':t==='under'?'dump':t):(t==='swing'?'deep':t==='dump'?'under':t)}
+// keep a dot inside its role's limits: handlers within 15 yards behind or beside the disc, cutters 10+ yards upfield
+function limitDot(q,u,y){
+  y=clamp(y,1.5,38.5);
+  if(q.role==='H'){u=clamp(u,-15,2);const dd=Math.hypot(u,y-REF_Y);if(dd>15){u*=15/dd;y=REF_Y+(y-REF_Y)*15/dd}}
+  else u=clamp(u,10,38);
+  return[u,y];
+}
+function spacedOk(P,q,u,y){return P.dots.every(o=>o===q||Math.hypot(o.u-u,o.y-y)>=2)}
+function placeFree(P,q,u,y){
+  for(let r=0;r<12;r+=.5)for(let a=0;a<6.28;a+=.5){const[u2,y2]=limitDot(q,u+Math.cos(a)*r,y+Math.sin(a)*r*1.6);if(spacedOk(P,q,u2,y2)){q.u=u2;q.y=y2;return}}
+}
+function remapCuts(P,oldLabels){
+  const L=dotLabels(P.dots),byLab={};for(const k in L)byLab[L[k]]=k;
+  P.cuts=P.cuts.map(c=>({...c,who:byLab[oldLabels[c.who]]})).filter(c=>c.who);
+  for(const c of P.cuts){const q=P.dots.find(o=>o.k===c.who);if(q&&!CUT_TYPES[q.role].includes(c.type))c.type=flipType(c.type,q.role)}
+}
+function showPlaybook(back){
+  if(!Array.isArray(CAR.playbook))CAR.playbook=defaultPlaybook();
+  const pb=CAR.playbook;
+  if(PB_SEL>=pb.length)PB_SEL=Math.max(0,pb.length-1);
+  let sel=null,renaming=false,testing=false;
+  const save=()=>saveProgram();
+  const render=()=>{
+    const P=pb[PB_SEL],L=P?dotLabels(P.dots):{},nH=P?P.dots.filter(q=>q.role==='H').length:0;
+    const sd=P&&sel?P.dots.find(q=>q.k===sel):null;
+    const field=`<rect class="pb-field" x="0" y="${pbY(0)}" width="${PB_W}" height="${pbY(40)-pbY(0)}"/>
+      <rect class="pb-zone" x="${pbX(-15)}" y="${pbY(0)}" width="${pbX(2)-pbX(-15)}" height="${pbY(40)-pbY(0)}"/>
+      <line class="pb-line" x1="0" x2="${PB_W}" y1="${pbY(0)}" y2="${pbY(0)}"/><line class="pb-line" x1="0" x2="${PB_W}" y1="${pbY(40)}" y2="${pbY(40)}"/>
+      <line class="pb-dash" x1="${pbX(0)}" x2="${pbX(0)}" y1="${pbY(0)}" y2="${pbY(40)}"/><line class="pb-dash" x1="${pbX(10)}" x2="${pbX(10)}" y1="${pbY(0)}" y2="${pbY(40)}"/>
+      <text class="pb-lbl" x="${pbX(-15)+4}" y="${pbY(0)+11}">FAR SIDE · DEAD</text><text class="pb-lbl" x="${pbX(-15)+4}" y="${pbY(40)-5}">DISC SIDE · LIVE</text>
+      <text class="pb-lbl" x="${pbX(10)+4}" y="${pbY(0)+11}">CUTTERS START PAST HERE</text><text class="pb-lbl" x="${PB_W-86}" y="${pbY(40)-5}">DOWNFIELD →</text>
+      <ellipse class="pb-disc" cx="${pbX(0)+9}" cy="${pbY(REF_Y)-8}" rx="4" ry="2"/>`;
+    const dotsSvg=P?P.dots.map(q=>`<g class="pb-dot ${q.holder?'holder':''}" data-k="${q.k}" transform="translate(${pbX(q.u)},${pbY(q.y)})">
+        ${q.role==='H'?`<rect class="pb-h ${sel===q.k?'pb-sel':''}" x="-9" y="-9" width="18" height="18"/>`:`<circle class="pb-c ${sel===q.k?'pb-sel':''}" r="9.5"/>`}
+        <text>${L[q.k]}</text></g>`).join(''):'';
+    const whoOpts=c=>P.dots.filter(q=>!q.holder).map(q=>`<option value="${q.k}" ${c.who===q.k?'selected':''}>${L[q.k]}</option>`).join('');
+    const rows=P?P.cuts.map((c,i)=>{const q=P.dots.find(o=>o.k===c.who),role=q?q.role:'C';
+      return`<tr><td class="dim">${i+1}</td>
+        <td><select data-ci="${i}" data-f="who" aria-label="Player for cut ${i+1}">${whoOpts(c)}</select></td>
+        <td><select data-ci="${i}" data-f="type" aria-label="Cut type">${CUT_TYPES[role].map(t=>`<option value="${t}" ${c.type===t?'selected':''}>${TYPE_NAME[t]}</option>`).join('')}</select></td>
+        <td><select data-ci="${i}" data-f="side" aria-label="Side"><option value="live" ${c.side==='live'?'selected':''}>Live side</option><option value="dead" ${c.side==='dead'?'selected':''}>Dead side</option></select></td>
+        <td><input type="number" step="0.1" min="0" max="5" value="${c.delay}" data-ci="${i}" data-f="delay" aria-label="Delay in seconds"> s</td>
+        <td class="n"><button class="mini" data-cu="${i}" ${i?'':'disabled'} aria-label="Move up">↑</button><button class="mini" data-cd="${i}" ${i<P.cuts.length-1?'':'disabled'} aria-label="Move down">↓</button><button class="mini" data-cx="${i}" aria-label="Remove">✕</button></td></tr>`}).join(''):'';
+    show(`<div class="screen"><div class="panel pbpanel">
+      <div class="row between"><div><div class="eyebrow">Playbook · ${pb.length}/${PB_MAX} plays · used on O-line points</div><h2>${P?esc(P.name):'No plays yet'}</h2></div>
+        <button class="btn" id="pbdone" ${renaming?'':'data-primary'}>Done</button></div>
+      <div class="pb-grid">
+        <div class="pb-list">
+          ${pb.map((pl,i)=>`<button class="pb-item ${i===PB_SEL?'on':''}" data-sel="${i}"><span><b>${i+1}</b> ${esc(pl.name)}</span><small>${FORM_NAME[pl.preset]} · ${pl.cuts.length} cuts</small></button>`).join('')||'<p class="dim small">Press New to make a play.</p>'}
+          <div class="pb-actions"><button class="btn alt small" id="pbnew" ${pb.length>=PB_MAX?'disabled':''}>New</button><button class="btn alt small" id="pbren" ${P?'':'disabled'}>Rename</button>
+            <button class="btn alt small" id="pbdup" ${P&&pb.length<PB_MAX?'':'disabled'}>Duplicate</button><button class="btn alt small" id="pbdel" ${P?'':'disabled'}>Delete</button></div>
+          ${renaming&&P?`<div class="rename one"><label for="pbname">Play name<input id="pbname" maxlength="22" value="${esc(P.name)}" autocomplete="off"></label><button class="btn small" id="pbnsave" data-primary>Save</button></div>`:''}
+          <p class="dim small">Drag a dot to move it, or click one to change its role. Gold squares handle, teal circles cut.</p>
+          <p class="dim small">Pick a play on the line call before an O-line point, or press 1 to 6 there. Auto runs the regular stack.</p>
+        </div>
+        ${P?`<div class="pb-main">
+          <div class="row">${['vert','horiz','23','32','14','41'].map(f=>`<button class="tog ${P.preset===f?'o on':''}" data-form="${f}">${FORM_NAME[f]}</button>`).join('')}${P.preset==='custom'?'<span class="tog o on">Custom</span>':''}</div>
+          <div class="row small pb-counts">Handlers <button class="tog ${nH===2?'o on':''}" data-h="2">2</button><button class="tog ${nH===3?'o on':''}" data-h="3">3</button><span>· <b>${nH}</b> handlers · <b>${7-nH}</b> cutters</span></div>
+          <svg id="pbsvg" viewBox="0 0 ${PB_W} ${PB_H}" role="img" aria-label="Formation diagram">${field}${dotsSvg}</svg>
+          ${sd&&!sd.holder?`<div class="row small">Selected <b>${L[sd.k]}</b> (${sd.role==='H'?'handler':'cutter'}) <button class="btn alt small" id="pbrole" ${(sd.role==='H'?nH>2:nH<3)?'':'disabled'}>Make ${sd.role==='H'?'cutter':'handler'}</button>${(sd.role==='H'?nH>2:nH<3)?'':'<span class="dim">A play needs 2 or 3 handlers.</span>'}</div>`:sd&&sd.holder?'<div class="row small dim">H1 holds the disc and starts on it.</div>':''}
+          <table class="cuts"><thead><tr><th>#</th><th>Player</th><th>Cut</th><th>Side</th><th>Delay</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="dim">No cuts yet. Add one below.</td></tr>'}</tbody></table>
+          <div class="row"><button class="btn alt small" id="pbadd" ${P.cuts.length>=10?'disabled':''}>Add cut</button><button class="btn small" id="pbtest" ${P.cuts.length?'':'disabled'}>Test</button>
+            <span class="dim small">Delay counts from when the cut before it starts, plus a little randomness each point.</span></div>
+        </div>`:''}
+      </div></div></div>`);
+    // list actions
+    ui.querySelectorAll('[data-sel]').forEach(b=>b.addEventListener('click',()=>{PB_SEL=+b.dataset.sel;sel=null;renaming=false;SFX.click();render()}));
+    on('pbdone',()=>{save();back()});
+    on('pbnew',()=>{pb.push(makePlay(`New play ${pb.length+1}`,'vert',2,[['C1','under','live',.6],['C2','deep','live',1.1]]));PB_SEL=pb.length-1;sel=null;save();render()});
+    on('pbdup',()=>{const c=JSON.parse(JSON.stringify(P));c.id=newPlayId();c.name=(P.name+' copy').slice(0,22);pb.splice(PB_SEL+1,0,c);PB_SEL++;save();render()});
+    on('pbdel',()=>{pb.splice(PB_SEL,1);if(PLAY_CHOICE>=pb.length)PLAY_CHOICE=-1;PB_SEL=Math.max(0,PB_SEL-1);sel=null;save();render()});
+    on('pbren',()=>{renaming=!renaming;render();if(renaming){const el=document.getElementById('pbname');el.focus();el.select()}});
+    on('pbnsave',()=>{const v=cleanName(document.getElementById('pbname').value,22);if(v)P.name=v;renaming=false;save();render()});
+    if(!P)return;
+    // formation presets and handler count
+    ui.querySelectorAll('[data-form]').forEach(b=>b.addEventListener('click',()=>{
+      const f=b.dataset.form,old=dotLabels(P.dots),h=f==='horiz'?3:f==='vert'?nH:2;
+      P.dots=presetDots(f,h);P.preset=f;remapCuts(P,old);sel=null;SFX.click();save();render();
+    }));
+    ui.querySelectorAll('[data-h]').forEach(b=>b.addEventListener('click',()=>{
+      const want=+b.dataset.h;if(want===nH)return;
+      const old=dotLabels(P.dots);
+      if(P.preset==='vert'){P.dots=presetDots('vert',want)}
+      else{ // turn the last cutter into a handler, or the last handler into a cutter
+        const q=want>nH?[...P.dots].reverse().find(o=>o.role==='C'):[...P.dots].reverse().find(o=>o.role==='H'&&!o.holder);
+        flipRole(q);P.preset='custom';
+      }
+      remapCuts(P,old);sel=null;SFX.click();save();render();
+    }));
+    function flipRole(q){
+      q.role=q.role==='H'?'C':'H';
+      if(q.role==='H'){q.u=-3;q.y=clamp(q.y,REF_Y-12,38.5)}else{q.u=Math.max(12,q.u)}
+      placeFree(P,q,q.u,q.y);
+      for(const c of P.cuts)if(c.who===q.k)c.type=flipType(c.type,q.role);
+    }
+    // labels renumber, but each cut follows the same dot
+    on('pbrole',()=>{flipRole(P.dots.find(o=>o.k===sel));P.preset='custom';save();render()});
+    // dragging dots on the diagram
+    const svg=document.getElementById('pbsvg');
+    let drag=null;
+    const toField=ev=>{const r=svg.getBoundingClientRect();return[pbU((ev.clientX-r.left)*PB_W/r.width),pbYf((ev.clientY-r.top)*PB_H/r.height)]};
+    svg.addEventListener('pointerdown',ev=>{
+      if(testing)return;
+      const g=ev.target.closest('.pb-dot');if(!g)return;
+      const q=P.dots.find(o=>o.k===g.dataset.k);if(!q)return;
+      drag={q,g,moved:false,start:[ev.clientX,ev.clientY]};svg.setPointerCapture(ev.pointerId);ev.preventDefault();
+    });
+    svg.addEventListener('pointermove',ev=>{
+      if(!drag||drag.q.holder)return;
+      if(!drag.moved&&Math.hypot(ev.clientX-drag.start[0],ev.clientY-drag.start[1])<4)return;
+      drag.moved=true;
+      const[u0,y0]=toField(ev),[u,y]=limitDot(drag.q,u0,y0);
+      if(!spacedOk(P,drag.q,u,y))return;
+      drag.q.u=Math.round(u*2)/2;drag.q.y=Math.round(y*2)/2;
+      drag.g.setAttribute('transform',`translate(${pbX(drag.q.u)},${pbY(drag.q.y)})`);
+    });
+    svg.addEventListener('pointerup',()=>{
+      if(!drag)return;const d=drag;drag=null;
+      if(d.moved){if(P.preset!=='custom')P.preset='custom';save();render()}
+      else{sel=sel===d.q.k?null:d.q.k;render()}
+    });
+    // cut list
+    ui.querySelectorAll('table.cuts [data-f]').forEach(el=>el.addEventListener('change',()=>{
+      const c=P.cuts[+el.dataset.ci],f=el.dataset.f;
+      if(f==='delay')c.delay=clamp(Math.round((parseFloat(el.value)||0)*10)/10,0,5);
+      else c[f]=el.value;
+      if(f==='who'){const q=P.dots.find(o=>o.k===c.who);if(q&&!CUT_TYPES[q.role].includes(c.type))c.type=CUT_TYPES[q.role][0]}
+      save();render();
+    }));
+    ui.querySelectorAll('[data-cu]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.cu;[P.cuts[i-1],P.cuts[i]]=[P.cuts[i],P.cuts[i-1]];save();render()}));
+    ui.querySelectorAll('[data-cd]').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.cd;[P.cuts[i+1],P.cuts[i]]=[P.cuts[i],P.cuts[i+1]];save();render()}));
+    ui.querySelectorAll('[data-cx]').forEach(b=>b.addEventListener('click',()=>{P.cuts.splice(+b.dataset.cx,1);save();render()}));
+    on('pbadd',()=>{
+      const used=new Set(P.cuts.map(c=>c.who)),next=P.dots.find(q=>q.role==='C'&&!used.has(q.k))||P.dots.find(q=>q.role==='C');
+      P.cuts.push({who:next.k,type:'under',side:'live',delay:1});save();render();
+    });
+    on('pbtest',()=>testPlay(P));
+  };
+  // animate the cut sequence on the diagram (disc at REF_Y, live side at the bottom)
+  function testPlay(P){
+    if(testing)return;testing=true;
+    const svg=document.getElementById('pbsvg'),els={};
+    svg.querySelectorAll('.pb-dot').forEach(g=>els[g.dataset.k]=g);
+    const st={};for(const q of P.dots)st[q.k]={u:q.u,y:q.y,home:[q.u,q.y],phase:'home',t:0};
+    const mid=lerp(20,REF_Y,.5),target=c=>{const sd=c.side==='live'?1:-1;
+      return c.type==='under'?[8.5,clamp(mid+sd*9,2,38)]:c.type==='deep'?[30,clamp(20+sd*9,3,37)]:c.type==='dump'?[-3.2,clamp(REF_Y+sd*6.5,2,38)]:[1.5,clamp(REF_Y+sd*11.5,2,38)]};
+    let t=0,next=0,ci=0,startAt=P.cuts.length?P.cuts[0].delay:0,last=performance.now(),done=0;
+    const move=(s,tx,ty,sp,dt)=>{const dx=tx-s.u,dy=ty-s.y,L=Math.hypot(dx,dy);if(L<.2)return true;const k=Math.min(1,sp*dt/L);s.u+=dx*k;s.y+=dy*k;return false};
+    const step=now=>{
+      const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;
+      if(ci<P.cuts.length&&t>=startAt){const c=P.cuts[ci],s=st[c.who];if(s){const[tx,ty]=target(c);const dx=tx-s.u,dy=ty-s.y,L=Math.hypot(dx,dy)||1;
+        s.phase='jab';s.t=.26;s.j=[s.u-dx/L*1.8,s.y-dy/L*1.8];s.tg=[tx,ty]}
+        ci++;startAt=t+(P.cuts[ci]?P.cuts[ci].delay:0)}
+      let busy=ci<P.cuts.length;
+      for(const k in st){const s=st[k];
+        if(s.phase==='jab'){move(s,s.j[0],s.j[1],9,dt);s.t-=dt;if(s.t<=0)s.phase='cut';busy=true}
+        else if(s.phase==='cut'){if(move(s,s.tg[0],s.tg[1],9,dt)){s.phase='linger';s.t=.35}busy=true}
+        else if(s.phase==='linger'){s.t-=dt;if(s.t<=0)s.phase='back';busy=true}
+        else if(s.phase==='back'){if(move(s,s.home[0],s.home[1],6,dt))s.phase='home';busy=true}
+        if(els[k])els[k].setAttribute('transform',`translate(${pbX(s.u)},${pbY(s.y)})`);
+      }
+      if(busy&&t<25&&document.body.contains(svg))requestAnimationFrame(step);
+      else{testing=false;if(document.body.contains(svg))render()}
+    };
+    requestAnimationFrame(step);
+  }
+  render();
+}
+
 // ---------------------------------------------------------------- layout + boot
 function fit(){
   const r=wrap.getBoundingClientRect();
@@ -2036,6 +2407,6 @@ function boot(data){
 }
 window.claude?.hot?.snapshot?.(()=>({coach:loadCoach()}));
 window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
-window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCoach:id=>startCoach(id),step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e),catchPct:o=>catchPct(o)};
+window.__huck={get G(){return G},get CAR(){return CAR},throwDisc,startCoach:id=>startCoach(id),step:dt=>update(dt),openness:e=>openness(e),leadSpot:(h,e)=>leadSpot(h,e),catchPct:o=>catchPct(o),setupPossession:(x,y,l,pl)=>setupPossession(x,y,l,pl),getPlaybook:()=>getPlaybook(),stallNum:()=>stallNum(),lineCall:k=>showLineCall(k)};
 })();
 </script>
