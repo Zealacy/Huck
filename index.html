@@ -219,7 +219,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 23 · Nov 18';
+const VERSION='Version 24 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1249,10 +1249,13 @@ function resetChases(){
   for(const o of G.off)if(o.state==='chase'){o.state='clear';o.timer=1.2}
   for(const d of G.def)if(d.state==='chase'){d.state='guard';d.help=false}
 }
+// Easter egg: Kangmin Kim of South Eugene never hangs on to it in the end zone. Anywhere else he's normal.
+function endZoneHands(p,team){return!(team&&team.id==='seh'&&(p.first+p.last).toLowerCase().replace(/[^a-z]/g,'')==='kangminkim')}
 function doCatch(e,f,label){
   const thrEnt=G.off[f.thrower];
   G.flight=null;resetChases();
   if(e.y<0||e.y>FW||e.x>FL||e.x<0){turnover({label:'OUT',x:clamp(e.x,0,FL),y:clamp(e.y,0,FW),kind:'out',f,recv:e});return}
+  if(e.x>=90&&!endZoneHands(e.p,G.me.team)){turnover({label:'DROP',x:G.disc.x,y:G.disc.y,kind:'drop',recv:e,f});return}
   SFX.catch();
   if(!G.demo){G.stats[thrEnt.p.id].c++;G.stats[e.p.id].ct++}
   if(e.x>=90){goal(e,thrEnt);return}
@@ -1404,7 +1407,8 @@ function simDefense(startX,fromPull,scheme){
   for(let i=0;i<randi(1,2);i++)lines.push(mids[i]);
   const res={scored,lines,dX:20,dPlayer:null};
   if(scored){
-    const scorer=byO(oR.filter(q=>q.pos!=='H').concat(oR)),assist=byO(oR.filter(q=>q!==scorer));
+    const can=oR.filter(q=>endZoneHands(q,G.opp.team));
+    const scorer=byO(can.filter(q=>q.pos!=='H').concat(can)),assist=byO(oR.filter(q=>q!==scorer));
     lines.push(pick([`${tag(assist)} hucks it deep...`,`${tag(assist)} looks up the line...`,`${tag(assist)} flips a hammer over the top...`]));
     lines.push({t:`${tag(scorer)} in the end zone. Point ${T}.`,c:'bad big'});
   }else{
