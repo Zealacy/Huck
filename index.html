@@ -219,7 +219,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 22 · Nov 18';
+const VERSION='Version 23 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -530,7 +530,7 @@ function computeForce(){
 // Handlers stay back (in Vertical, the dump and swing spots). Everyone else cuts. Roles are set once per
 // possession by the style's handler count (styleRoles); whoever holds the disc keeps his role, so when a
 // cutter catches it every handler sets up around him. In Vertical the cutters keep their place in line:
-// G.stack runs front to back, and a cutter who finishes rejoins at the back.
+// G.stack runs front to back; cuts come from the back, and a cutter who finishes rejoins at the front.
 function assignSlots(){
   const h=G.holder;
   for(const e of G.off)e.stay=null;
@@ -572,7 +572,7 @@ function setupPossession(x,y,label){
   G.holder=h.idx;G.anchor={x,y};
   h.x=x;h.y=y;h.vx=h.vy=0;h.state='holder';
   G.stack=shuffle(G.off.filter(e=>e!==h&&e.role==='C').map(e=>e.idx));
-  G.activeCut=-1;G.cutGap=.9;G.nextFrom=Math.random()<.5?'front':'back';G.double=false;G.swingT=rand(2,3.5);
+  G.activeCut=-1;G.cutGap=.9;G.nextDeep=Math.random()<.4;G.double=false;G.swingT=rand(2,3.5);
   styleOrder();
   computeForce();assignSlots();
   const jit=G.style==='vert'?1:.3;
@@ -730,7 +730,7 @@ function updateOff(e,dt,ph){
       if(e.timer<=0||dist(e.x,e.y,e.jx,e.jy)<.45){e.state='scut';e.cutT=0;e.timer=Math.max(e.deep?2.2:1.5,dist(e.x,e.y,e.tx,e.ty)/e.speed+.5);const d=G.def[e.idx];d.bite=Math.max(d.bite,e.pendBite)}break;
     case'scut':steer(e,e.tx,e.ty,1.05,dt,65,8);e.timer-=dt;e.cutT=(e.cutT||0)+dt;
       if(e.timer<=0||dist(e.x,e.y,e.tx,e.ty)<.8){e.state='linger';e.timer=e.deep?.2:.35}break;
-    case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e,true);break;
+    case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e);break;
     case'sclear':e.timer-=dt;
       if(e.wp){steer(e,e.wp[0],e.wp[1],.95,dt,60,8);if(dist(e.x,e.y,e.wp[0],e.wp[1])<1.2)e.wp=null}
       else{const[tx,ty]=slotPos(e);steer(e,tx,ty,.8,dt,50,6);if(dist(e.x,e.y,tx,ty)<.8||e.timer<-2.5)e.state=e.lane==='H'?'handler':'stack'}
@@ -810,7 +810,7 @@ function setJab(e,len){
   const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
   e.jx=clamp(e.x-dx/L*len,.5,108);e.jy=clamp(e.y-dy/L*len,1,39);
 }
-// Vertical: the front of the stack cuts under, the back goes deep, alternating. side: 'live' (the open
+// Vertical: the back of the stack cuts, alternating under and deep. side: 'live' (the open
 // side, G.os) or 'dead'.
 function startStackCut(e,deep,side){
   const a=G.anchor,os=G.os,sd=side==='dead'?-os:os,y0=stackY();
@@ -832,7 +832,7 @@ function startStackCut(e,deep,side){
 const STYLES=['vert','horiz','41','14'];
 const STYLE_NAME={vert:'Vertical',horiz:'Horizontal','41':'4-1','14':'1-4'};
 const STYLE_HANDLERS={vert:2,horiz:3,'41':2,'14':2};
-const STYLE_NOTE={vert:'2 handlers and a 5-man stack. The front cuts under, the back goes deep.',
+const STYLE_NOTE={vert:'2 handlers and a 5-man stack. Cuts come from the back, then rejoin at the front.',
   horiz:'3 handlers across the back, 4 cutters across the field. The handlers swing it side to side.',
   '41':'4 cutters on the disc side go in turn. The 1 on the far side is the deep threat.',
   '14':'The 1 on the disc side works under. The 4 on the far side go deep.'};
@@ -915,13 +915,16 @@ function styleCuts(dt){
   const ready=G.stack.map(i=>G.off[i]).filter(e=>e&&e.idx!==G.holder&&canCut(e));
   if(!ready.length)return;
   const side=Math.random()<LIVE_SHARE?'live':'dead';
-  let e=null,type='under';
+  let e=null,type='under',slot=null;
   if(st==='vert'){
-    const deep=G.nextFrom==='back'&&ready.length>1;
-    let i=deep?ready.length-1:0;
-    if(ready.length>2&&Math.random()<SKIP_TURN)i+=deep?-1:1; // the next man passes on his turn
-    e=ready[i];type=deep?'deep':'under';
-    G.nextFrom=G.nextFrom==='back'?'front':'back';
+    // cuts start from the back of the stack, farthest from the handlers, where there's the most room to
+    // build up speed; he alternates under and deep. Now and then he passes and the next man up goes.
+    let i=ready.length-1;
+    if(ready.length>1&&Math.random()<SKIP_TURN)i--;
+    const deep=G.nextDeep;G.nextDeep=!deep;
+    e=ready[i];type=deep?'deep':'under';slot=`${G.stack.indexOf(e.idx)+1}/${G.stack.length}`;
+    // he leaves the line as he goes and takes the front place; the stack fills in behind him
+    G.stack.splice(G.stack.indexOf(e.idx),1);G.stack.unshift(e.idx);
     startStackCut(e,deep,side);
   }else{
     if(Math.random()<SKIP_TURN)G.cutPtr++; // the next man passes on his turn
@@ -939,7 +942,7 @@ function styleCuts(dt){
   const r=Math.random();
   G.double=r<.12;
   G.cutGap=G.double?rand(.3,.55):r<.27?rand(.4,.8):rand(.05,.3);
-  if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:st==='vert'?'s'+G.stack.indexOf(e.idx):e.cslot,type,side});
+  if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:st==='vert'?slot:e.cslot,type,side});
 }
 // Horizontal picks by kind: an edge cutter goes deep down his sideline, a middle cutter comes under.
 // The one on the side the cut goes to takes it; if he isn't back yet, the other one crosses over.
@@ -1004,14 +1007,14 @@ function showStylePicker(el,kind,mode){
   }));
 }
 
-// Get out of the lane in one move: an under cutter peels off toward the back of the stack on
-// the break side, a deep cutter turns and comes back up the break side.
-function clearOut(e,toBack){
+// Get out of the lane in one move, on the break side. In Vertical he took the front place in line when he
+// started his cut (so the next man is already at the back): an under cutter peels off to the front, a
+// deep cutter turns and comes back up the break side.
+function clearOut(e){
   e.state='sclear';e.timer=1.6;
   if(G.spots||e.lane==='H'){e.wp=null;return} // other styles (and handlers): straight back to his own spot
-  if(toBack&&G.stack.includes(e.idx)){G.stack.splice(G.stack.indexOf(e.idx),1);G.stack.push(e.idx)}
-  const back=stackSpot(Math.max(0,G.stack.length-1),Math.max(1,G.stack.length))[0];
-  e.wp=[clamp(e.deep?e.x-3:Math.min(back-2,e.x+8),1,107),clamp(stackY()-G.os*6,2,38)];
+  const front=stackSpot(0,Math.max(1,G.stack.length))[0];
+  e.wp=[clamp(e.deep?e.x-3:Math.max(front-1,e.x+2),1,107),clamp(stackY()-G.os*6,2,38)];
 }
 // Receivers attack the disc: run to the earliest spot on its path they can reach in time,
 // instead of waiting at the landing point for their defender to catch up.
@@ -1258,7 +1261,7 @@ function doCatch(e,f,label){
   G.anchor={x:e.x,y:e.y};
   G.phase='live';G.settle=.28;G.stallT=0;G.markerSet=false;G.resetCut=false;G.fake=0;
   computeForce();assignSlots();
-  for(const o of G.off)if(o!==e&&(o.state==='jab'||o.state==='scut'||o.state==='linger'))clearOut(o,true);
+  for(const o of G.off)if(o!==e&&(o.state==='jab'||o.state==='scut'||o.state==='linger'))clearOut(o);
   G.activeCut=-1;G.cutGap=rand(.3,.6);G.double=false;
   for(const d of G.def)d.state=d.idx===e.idx?'mark':'guard';
 }
