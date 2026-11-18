@@ -219,7 +219,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 24 · Nov 18';
+const VERSION='Version 25 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1018,9 +1018,13 @@ function clearOut(e){
 }
 // Receivers attack the disc: run to the earliest spot on its path they can reach in time,
 // instead of waiting at the landing point for their defender to catch up.
+// How high a throw rises above its straight line (yards). Hucks float. Flat throws stay level when they're
+// short but get a little arc the longer they go, like real ones: a 35-yard flat is over everybody's reach in
+// the middle, so only someone near the thrower or where it comes down can get a hand on it.
+function arcOf(type,L){return type==='huck'?2.5+L*.11:Math.max(0,(L-12)*.085)}
 function discAt(f,t){
   const s=t/f.T;
-  if(s<=1)return{x:lerp(f.fx,f.tx,s),y:lerp(f.fy,f.ty,s),z:f.type==='huck'?lerp(1.5,1,s)+4*f.apex*s*(1-s):lerp(1.4,1,s),late:false};
+  if(s<=1)return{x:lerp(f.fx,f.tx,s),y:lerp(f.fy,f.ty,s),z:(f.type==='huck'?lerp(1.5,1,s):lerp(1.4,1,s))+4*f.apex*s*(1-s),late:false};
   const ex=t-f.T,sp=Math.min(f.dist/f.T*.55,10);
   return{x:f.tx+f.ux*sp*ex,y:f.ty+f.uy*sp*ex,z:1-ex*(f.type==='huck'?3.2:2.6),late:true};
 }
@@ -1082,7 +1086,7 @@ function openness(e){
   const L=Math.max(1,dist(h.x,h.y,ax,ay));
   // a shaky thrower can miss even an open man: fold his likely miss distance into the read
   const er=throwErr(h.p.thr,L,huck?'huck':'flat'),miss=huck?clamp((er*.3-.3)*.3,0,.35):clamp((er*.6-.3)*.3,0,.4); // receivers track hucks, so misses matter less there
-  const f={type:huck?'huck':'flat',fx:h.x,fy:h.y,tx:ax,ty:ay,t:0,T,dist:L,ux:(ax-h.x)/L,uy:(ay-h.y)/L,apex:huck?2.5+L*.11:0};
+  const f={type:huck?'huck':'flat',fx:h.x,fy:h.y,tx:ax,ty:ay,t:0,T,dist:L,ux:(ax-h.x)/L,uy:(ay-h.y)/L,apex:arcOf(huck?'huck':'flat',L)};
   const od=G.def[e.idx];
   const r={x:e.x,y:e.y,vx:e.vx,vy:e.vy,speed:e.speed,p:e.p,tx:ax,ty:ay};
   const d={x:od.x,y:od.y,vx:od.vx,vy:od.vy,speed:od.speed,p:od.p};
@@ -1172,7 +1176,7 @@ function throwDisc(type,ax,ay,ai){
     }
   }
   const L=Math.hypot(tx-h.x,ty-h.y)||1;
-  G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower,bend};
+  G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:arcOf(type,L),touched:new Set(),thrower,bend};
   G.holder=-1;G.phase='flight';
   h.state='clear';h.timer=1;h.stay=[h.x,h.y]; // he follows through where he is until someone catches it
   const rcv=chooseReceiver(tx,ty,thrower,T);
@@ -1645,9 +1649,9 @@ function drawAim(){
   const relIn=Math.abs(angDiff(b.rel,G.markAng))<.8,straightIn=Math.abs(angDiff(b.straight,G.markAng))<.8;
   const inW=relIn&&G.fake<=0,around=!relIn&&straightIn&&G.lean&&G.fake<=0;
   const c=over?PAL.red:inW?PAL.sunset:PAL.chalk;
-  const apex=2.5+d*.11;
+  const apex=arcOf(huck?'huck':'flat',d);
   for(let s=.06;s<1;s+=huck?.04:.05){
-    const o=bendAt(b,s),x=lerp(h.x,tx,s)+b.nx*o,y=lerp(h.y,ty,s)+b.ny*o,z=huck?lerp(1.5,1,s)+4*apex*s*(1-s):1.2;
+    const o=bendAt(b,s),x=lerp(h.x,tx,s)+b.nx*o,y=lerp(h.y,ty,s)+b.ny*o,z=(huck?lerp(1.5,1,s):lerp(1.4,1,s))+4*apex*s*(1-s);
     rect(sx(x)-1,sy(y)-Math.round(z*ZH)-6,2,2,c);
   }
   const X=sx(tx),Y=sy(ty);
@@ -1789,7 +1793,7 @@ function showHow(back){
     <div class="how">
       <div class="keys">
         <span class="kbd">MOUSE</span><span>Aim. The dotted line shows the flight, the circle shows how accurate this thrower is (worse throwers have bigger circles), and the white ring marks who will go get it.</span>
-        <span class="kbd">CLICK</span><span>Flat throw. Fast and accurate, shorter range.</span>
+        <span class="kbd">CLICK</span><span>Flat throw. Fast and accurate, shorter range. Long ones have a little arc, so a defender in the middle can't reach them.</span>
         <span class="kbd">SHIFT+CLICK</span><span>Huck. A long, floating throw that the wind pushes around. Right-click works too.</span>
         <span class="kbd">Q / E</span><span>Curve the next throw left or right. Press again to go back to straight; it resets after every throw. The disc still lands where you aim. Bending it around the red wedge makes a point-block much less likely, at the cost of a slightly slower, less accurate throw.</span>
         <span class="kbd">SPACE</span><span>Pivot fake. Your marker bites and the mark opens for a moment.</span>
