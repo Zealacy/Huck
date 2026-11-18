@@ -234,7 +234,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 18 · Nov 18';
+const VERSION='Version 19 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -376,38 +376,26 @@ const SFX={
 };
 
 // ---------------------------------------------------------------- input
-// Throwing works like a slingshot: press anywhere, pull back away from where you want the disc to go,
-// and let go. The farther you pull, the longer the throw. Past flat range it becomes a huck.
-const input={mx:W/2,my:H/2,in:false,shift:false,drag:false,ax:0,ay:0,dragHuck:false};
-const PULL=2.4; // yards of throw per screen-yard of pull
+// Throwing: aim with the mouse and click where you want the disc to go. Shift+click (or right-click) hucks it.
+const input={mx:W/2,my:H/2,in:false,shift:false};
 function mouseWorld(){return{x:G.camX+input.mx/PPY,y:(input.my-FT)/SQ}}
 function canvasPoint(e){const r=cvs.getBoundingClientRect();input.mx=(e.clientX-r.left)*W/r.width;input.my=(e.clientY-r.top)*H/r.height}
 function canAim(){return G&&!G.demo&&!G.paused&&G.phase==='live'&&G.holder>=0&&!ui.firstElementChild}
-// where the current pull would send the disc, and whether it's a huck
-function pullAim(){
-  const h=G.off[G.holder],pull=Math.hypot(input.ax-input.mx,input.ay-input.my);
-  const dx=(input.ax-input.mx)/PPY*PULL,dy=(input.ay-input.my)/SQ*PULL;
-  let d=Math.hypot(dx,dy),tx=h.x+dx,ty=h.y+dy;
-  const huck=input.shift||input.dragHuck||d>flatRange(h.p.thr);
+// where a click right now would send the disc (clamped to this thrower's range), and whether it's a huck
+function mouseAim(huck){
+  const h=G.off[G.holder],w=mouseWorld();
+  let dx=w.x-h.x,dy=w.y-h.y,d=Math.hypot(dx,dy);
   const maxR=huck?huckRange(h.p.thr):flatRange(h.p.thr),over=d>maxR;
-  if(over){tx=h.x+dx*maxR/d;ty=h.y+dy*maxR/d;d=maxR}
-  return{h,tx,ty,d,huck,over,pull};
+  if(over){dx*=maxR/d;dy*=maxR/d;d=maxR}
+  return{h,tx:h.x+dx,ty:h.y+dy,d,huck,over};
 }
 cvs.addEventListener('mousemove',e=>{canvasPoint(e);input.in=true;input.shift=e.shiftKey});
 cvs.addEventListener('mouseleave',()=>input.in=false);
 cvs.addEventListener('contextmenu',e=>e.preventDefault());
 cvs.addEventListener('mousedown',e=>{
-  audio();canvasPoint(e);
+  audio();canvasPoint(e);input.in=true;
   if(!canAim())return;
-  input.drag=true;input.ax=input.mx;input.ay=input.my;input.dragHuck=e.button===2;
-});
-window.addEventListener('mousemove',e=>{if(input.drag){canvasPoint(e);input.shift=e.shiftKey}});
-window.addEventListener('mouseup',e=>{
-  if(!input.drag)return;
-  input.drag=false;canvasPoint(e);
-  if(!canAim())return;
-  const a=pullAim();
-  if(a.pull<14)return; // a tap, not a throw
+  const a=mouseAim(e.shiftKey||e.button===2);
   throwDisc(a.huck?'huck':'flat',a.tx,a.ty,false);
 });
 window.addEventListener('keydown',e=>{
@@ -421,14 +409,13 @@ window.addEventListener('keydown',e=>{
   if((k==='q'||k==='e')&&G&&!G.demo&&!G.paused&&G.phase==='live'&&G.holder>=0&&!ui.firstElementChild){
     const want=k==='q'?-1:1;G.lean=G.lean===want?0:want;beep(G.lean?520:380,.04,'square',.02);return}
   if(k==='m'){muted=!muted;flashNote(muted?'Sound off':'Sound on');return}
-  if(k==='escape'&&input.drag){e.preventDefault();input.drag=false;return} // cancel the throw you're lining up
   if((k==='escape'||k==='p')&&G&&!G.demo&&G.phase!=='over'&&G.phase!=='idle'){e.preventDefault();togglePause();return}
   if(k==='enter'){const b=ui.querySelector('[data-primary]');if(b&&!b.disabled){e.preventDefault();b.click()}return}
   if(/^[0-6]$/.test(k)){const b=ui.querySelector(`[data-key="${k}"]`);if(b){e.preventDefault();b.click()}}
   if(k==='arrowleft'||k==='arrowright'){const b=ui.querySelector(k==='arrowleft'?'[data-prev]':'[data-next]');if(b){e.preventDefault();b.click()}}
 });
 window.addEventListener('keyup',e=>{if(e.key==='Shift')input.shift=false});
-window.addEventListener('blur',()=>{input.shift=false;input.drag=false;if(G&&!G.demo&&!G.paused&&['live','flight','ready'].includes(G.phase))togglePause()});
+window.addEventListener('blur',()=>{input.shift=false;if(G&&!G.demo&&!G.paused&&['live','flight','ready'].includes(G.phase))togglePause()});
 
 // ---------------------------------------------------------------- match state
 let G=null;
@@ -1160,7 +1147,7 @@ function update(dt){
     if(G.phase==='flight')updateFlight(dt);
     if(G.holder>=0){
       const h=G.off[G.holder];
-      if(G.phase==='live'&&!G.demo&&input.drag){const a=pullAim();h.face=a.tx>=h.x?1:-1}
+      if(G.phase==='live'&&!G.demo&&input.in){const w=mouseWorld();h.face=w.x>=h.x?1:-1}
       G.disc.x=h.x+h.face*.55;G.disc.y=h.y;G.disc.z=1.1;
     }
   }
@@ -1441,13 +1428,8 @@ function drawGroundLayer(){
   }
 }
 function drawAim(){
-  if(!input.drag||!canAim())return;
-  const{h,tx,ty,d,huck,over,pull}=pullAim();
-  // the pull itself: a rubber band from where you pressed to where you are
-  ctx.globalAlpha=.55;ctx.strokeStyle=PAL.chalk;ctx.lineWidth=2;ctx.setLineDash([4,4]);
-  ctx.beginPath();ctx.moveTo(input.ax,input.ay);ctx.lineTo(input.mx,input.my);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
-  rect(input.ax-3,input.ay-3,6,6,PAL.chalk);
-  if(pull<14)return;
+  if(!input.in||!canAim()){G.aimR=null;return}
+  const{h,tx,ty,d,huck,over}=mouseAim(input.shift);
   const b=bendOf(h.x,h.y,tx,ty,G.lean||0);
   const relIn=Math.abs(angDiff(b.rel,G.markAng))<.8,straightIn=Math.abs(angDiff(b.straight,G.markAng))<.8;
   const inW=relIn&&G.fake<=0,around=!relIn&&straightIn&&G.lean&&G.fake<=0;
@@ -1522,7 +1504,7 @@ function drawHUD(){
   // controls strip
   if(G.phase==='live'||G.phase==='ready'||G.phase==='flight'){
     rect(0,H-20,W,20,'rgba(11,18,26,.72)');
-    text('DRAG BACK + RELEASE  THROW    SHIFT  HUCK    Q/E  CURVE    SPACE  PIVOT FAKE    T  TIMEOUT    ESC  PAUSE',W/2,H-6,10,PAL.dim,'center',false);
+    text('CLICK  FLAT    SHIFT+CLICK  HUCK    Q/E  CURVE    SPACE  PIVOT FAKE    T  TIMEOUT    ESC  PAUSE',W/2,H-6,10,PAL.dim,'center',false);
   }
 }
 function drawBanner(){
@@ -1546,7 +1528,7 @@ function render(){
   if(G.rain){ctx.fillStyle='rgba(200,215,230,.45)';for(const r of G.rainDrops)ctx.fillRect(Math.round(r.x),Math.round(r.y),1,7)}
   drawHUD();drawBanner();
   if(note){note.t-=1/60;text(note.s.toUpperCase(),W/2,H-30,12,PAL.chalk,'center');if(note.t<=0)note=null}
-  cvs.style.cursor=(!G.demo&&G.phase==='live'&&!ui.firstElementChild)?(input.drag?'grabbing':'grab'):'default';
+  cvs.style.cursor=(!G.demo&&G.phase==='live'&&!ui.firstElementChild)?'none':'default';
 }
 let lastT=performance.now();
 let loopErrors=0;
@@ -1595,9 +1577,9 @@ function showHow(back){
     <div class="eyebrow">How to play</div><h2>Move the disc. Beat the mark.</h2>
     <div class="how">
       <div class="keys">
-        <span class="kbd">DRAG BACK</span><span>Press anywhere and pull back away from where you want to throw, like a slingshot. Let go to throw. Pull farther for a longer throw.</span>
-        <span class="kbd">PREVIEW</span><span>While you pull you see the flight, where it lands, and a circle for how accurate this thrower is. Worse throwers have bigger circles.</span>
-        <span class="kbd">SHIFT</span><span>Hold while pulling to put it up as a huck, a floating throw the wind pushes around. Long pulls become hucks on their own. Right-drag works too. Esc cancels a throw.</span>
+        <span class="kbd">MOUSE</span><span>Aim. The dotted line shows the flight, the circle shows how accurate this thrower is (worse throwers have bigger circles), and the white ring marks who will go get it.</span>
+        <span class="kbd">CLICK</span><span>Flat throw. Fast and accurate, shorter range.</span>
+        <span class="kbd">SHIFT+CLICK</span><span>Huck. A long, floating throw that the wind pushes around. Right-click works too.</span>
         <span class="kbd">Q / E</span><span>Curve the next throw left or right. Press again to go back to straight; it resets after every throw. The disc still lands where you aim. Bending it around the red wedge makes a point-block much less likely, at the cost of a slightly slower, less accurate throw.</span>
         <span class="kbd">SPACE</span><span>Pivot fake. Your marker bites and the mark opens for a moment.</span>
         <span class="kbd">T</span><span>Timeout while you hold the disc. Two per game. Your line gets some energy back.</span>
