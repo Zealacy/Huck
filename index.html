@@ -156,6 +156,8 @@ td.pos{font-family:var(--font-display);font-size:calc(var(--u)*11);color:var(--s
 .tagO,.tagD{font-family:var(--font-display);font-size:calc(var(--u)*10);padding:0 calc(var(--u)*3);margin-right:calc(var(--u)*2);color:var(--ink)}
 .tagO{background:var(--sea)}.tagD{background:var(--sunset)}
 .small{font-size:calc(var(--u)*12)}
+.rename{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto auto;gap:calc(var(--u)*8);align-items:end;margin-top:calc(var(--u)*4)}
+.rename label{display:flex;flex-direction:column;gap:calc(var(--u)*3);font-size:calc(var(--u)*12);color:var(--dim);min-width:0}
 .tog{font-family:var(--font-display);font-size:calc(var(--u)*11);background:var(--panel-2);color:var(--dim);border:0;padding:calc(var(--u)*3) calc(var(--u)*10);cursor:pointer}
 .tog.o.on{background:var(--sea);color:var(--ink)}.tog.d.on{background:var(--sunset);color:var(--ink)}
 .tog:focus-visible{outline:calc(var(--u)*2) solid var(--gold)}
@@ -204,7 +206,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 16 · Nov 18';
+const VERSION='Version 17 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -247,8 +249,9 @@ const TEAM=id=>TEAMS.find(t=>t.id===id);
 const STATE_NAME={WA:'Washington',OR:'Oregon',CA:'California'};
 
 // ---------------------------------------------------------------- players (all fictional, generated)
-const FIRST=['Kai','Maya','Leo','Aiden','Sofia','Mateo','Priya','Jonah','Ava','Ethan','Noah','Lila','Isaac','Ruby','Hana','Kenji','Diego','Zoe','Theo','Eli','Nora','Owen','Ari','Jada','Malik','Wren','Finn','Quinn','Rowan','Sage','Talia','Marcus','Ezra','Ines','Luca','Amara','Devin','Tenzin','Anika','Sam','Jordan','Riley','Cam','Nico','Iris','Mina','Desmond','Felix','Gabe','Hugo','Leah','Mira','Remy','Soren','Tessa','Uma','Yuki','Zane','Omar','Lena','Bodhi','Callum','Esme','Ronan','Sasha','Tomas','Vera','Wes','Imani','Jasper'];
-const LAST=['Nakamura','Ramos','Chen','Okafor','Patel','Larsen','Nguyen','Brooks','Alvarez','Kim','Olsen','Hughes','Moreno','Park','Haddad','Bennett','Tanaka','Silva','Reyes','Fischer','Kaur','Lindqvist','Morales','Ito','Walsh','Delgado','Abbott','Yamamoto','Castillo','Novak','Sorensen','Huang','Mendez','Foster','Osei','Pham','Becker','Rivera','Sato','Hale','Kowalski','Dang','Ortiz','Wu','Lee','Hart','Price','Bjornson','Fujita','Galvan','Iverson','Quintero','Strand','Vu','Zamora','Torres','Adeyemi','Marsh','Oyelaran','Whitlock'];
+// Fictional open-division players: mostly common boys' names from all over, a few that go either way.
+const FIRST=['Aaron','Adrian','Aiden','Alex','Andre','Andrew','Arjun','Asher','Ben','Bodhi','Brandon','Caleb','Callum','Cam','Carlos','Charlie','Chris','Cole','Connor','Cooper','Dante','Darius','David','Declan','Derek','Desmond','Devin','Diego','Dylan','Eli','Elias','Emeka','Emmett','Eric','Ethan','Evan','Ezra','Felix','Finn','Gabe','Gavin','Graham','Griffin','Hank','Hayden','Henry','Hiro','Hugo','Ian','Isaac','Ivan','Jack','Jake','Jalen','James','Jasper','Javier','Jay','Jonah','Jordan','Jose','Julian','Kai','Kenji','Kevin','Kiran','Leo','Liam','Logan','Luca','Lucas','Luis','Malik','Marco','Marcus','Mason','Mateo','Max','Micah','Miles','Nate','Nico','Noah','Nolan','Omar','Oscar','Owen','Pablo','Parker','Quinn','Rafael','Ravi','Reid','Remy','Riley','Rohan','Ronan','Ryan','Sam','Santiago','Sean','Seth','Silas','Soren','Spencer','Tariq','Tenzin','Theo','Tomas','Trevor','Tyler','Victor','Wes','Will','Wyatt','Xavier','Yusuf','Zach','Zane','Amir','Bryce','Darren','Felipe','Jonas','Kofi','Mike','Rio','Sid','Tate'];
+const LAST=['Nakamura','Ramos','Chen','Okafor','Patel','Larsen','Nguyen','Brooks','Alvarez','Kim','Olsen','Hughes','Moreno','Park','Haddad','Bennett','Tanaka','Silva','Reyes','Fischer','Kaur','Lindqvist','Morales','Ito','Walsh','Delgado','Abbott','Yamamoto','Castillo','Novak','Sorensen','Huang','Mendez','Foster','Osei','Pham','Becker','Rivera','Sato','Hale','Kowalski','Dang','Ortiz','Wu','Lee','Hart','Price','Bjornson','Fujita','Galvan','Iverson','Quintero','Strand','Vu','Zamora','Torres','Adeyemi','Marsh','Oyelaran','Whitlock','Anderson','Baker','Banerjee','Castro','Chang','Cho','Coleman','Cruz','Diaz','Dixon','Edwards','Espinoza','Farrell','Fernandez','Garcia','Gill','Gomez','Gupta','Hall','Hayes','Hernandez','Holm','Ibarra','Jensen','Johansson','Kang','Keller','Khan','Kobayashi','Lam','Lopez','Mahoney','Martinez','Matsuda','Mehta','Miller','Murphy','Nakashima','Nelson','Obi','Ortega','Palmer','Perez','Ramirez','Rao','Rossi','Russo','Saito','Sandoval','Schmidt','Shah','Singh','Soto','Sullivan','Takahashi','Tran','Turner','Vargas','Wagner','Ward','Watanabe','Weber','Yang','Young','Zhang','Abernathy','Beaumont','Dorsey','Ellison','Fuentes','Gallagher','Hollis','Kealoha','Lindgren','Mercado','Okonkwo','Pacheco','Rasmussen','Tolliver','Ueda'];
 const SKIN=['#f1c9a5','#e0b08a','#c68a5e','#9a6440','#6b432a'];
 const HAIR=['#2b1d14','#5a3a1e','#a0522d','#e2c27a','#141414','#7b3f00','#b8462e'];
 const ATTR=['thr','spd','hnd','jmp','def','sta'];
@@ -288,12 +291,20 @@ function genRoster(r,prestige,elite){
   const order=shuffle(ROSTER_POS.map((_,i)=>i),r),tiers=ROSTER_POS.map(()=>0);
   order.slice(0,n5).forEach(i=>tiers[i]=2);order.slice(n5,n5+n4).forEach(i=>tiers[i]=1);
   const adj=(prestige-3)*.3+(elite?.4:0);
-  return ROSTER_POS.map((ps,i)=>{
+  const ro=ROSTER_POS.map((ps,i)=>{
     const p=genPlayer(r,ps,tiers[i],used);
     for(const a of ATTR)if(r()<.7)p[a]=clamp(Math.round(p[a]+adj),1,10);
     shapeTier(p,tiers[i],r);setPot(p,r);
     return p;
   });
+  // no two teammates share a first or last name
+  const fs=new Set(),ls=new Set();
+  for(const p of ro){
+    for(let k=0;k<30&&fs.has(p.first);k++)p.first=pick(FIRST,r);
+    for(let k=0;k<30&&ls.has(p.last);k++)p.last=pick(LAST,r);
+    fs.add(p.first);ls.add(p.last);
+  }
+  return ro;
 }
 const teamOff=ro=>avg(ro.map(p=>p.thr*.4+p.hnd*.3+p.spd*.3));
 const teamDef=ro=>avg(ro.map(p=>p.def*.5+p.spd*.25+p.jmp*.25));
@@ -1800,7 +1811,8 @@ function showCoachHub(){
   on('klines',showLinesEditor);on('kfac',showFacilities);
   on('kquit',()=>{saveProgram();showTitle()});
 }
-function showCoachPlayer(id){
+function cleanName(v,max){return String(v||'').replace(/[<>]/g,'').replace(/\s+/g,' ').trim().slice(0,max)}
+function showCoachPlayer(id,renaming){
   const S=CAR.season,list=myRoster().slice().sort((a,b)=>('HCD'.indexOf(a.pos)-'HCD'.indexOf(b.pos))||(ovr(b)-ovr(a)));
   const i=list.findIndex(p=>p.id===id),p=list[i];if(!p){showCoachHub();return}
   const ps=S.pstats[p.id]||{g:0,a:0,d:0,pts:0};
@@ -1810,18 +1822,29 @@ function showCoachPlayer(id){
     return`<div class="attr" title="${esc(ATTR_HINT[a])}"><span>${ATTR_NAME[a]}</span><div class="pips">${Array.from({length:10},(_,k)=>`<span class="${k<v?'on':''}"></span>`).join('')}</div><span class="v">${v}</span>
     <button class="plus" data-up="${a}" ${can&&afford?'':'disabled'} aria-label="Upgrade ${ATTR_NAME[a]} for ${c} of his skill points">${v>=10?'MAX':!can?'CEILING':`+1 · ${c}SP`}</button></div>`}).join('');
   show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*620)">
-    <div class="row between"><div><div class="eyebrow">#${p.num} · ${POS[p.pos]} · ${GRADE[p.grade]||''}</div><h2>${esc(pname(p))}</h2></div><span class="ccbadge" title="His skill points">${sp} SP</span></div>
+    <div class="row between"><div><div class="eyebrow">#${p.num} · ${POS[p.pos]} · ${GRADE[p.grade]||''}</div>${renaming?`<div class="rename">
+        <label for="rnf">First<input id="rnf" maxlength="14" value="${esc(p.first)}" autocomplete="off"></label>
+        <label for="rnl">Last<input id="rnl" maxlength="16" value="${esc(p.last)}" autocomplete="off"></label>
+        <button class="btn small" id="rnsave" data-primary>Save</button><button class="btn alt small" id="rncancel">Cancel</button></div>`
+      :`<div class="row"><h2>${esc(pname(p))}</h2><button class="btn alt small" id="rename">Rename</button></div>`}</div><span class="ccbadge" title="His skill points">${sp} SP</span></div>
     <div class="row between small"><span class="dim">Next skill point: ${xp} / ${XP_PER_SP} XP</span><span class="dim">Earned by playing: points, goals, assists, blocks, catches and wins</span></div>
     <div class="xpbar"><i style="width:${Math.round(100*xp/XP_PER_SP)}%"></i></div>
     <div class="row between"><span>Now <span class="stars">${starStr(starsOf(p))}</span> <span class="dim">OVR ${ovr(p).toFixed(1)}</span></span><span>Ceiling <span class="stars">${starStr(starsAt(p.pot||ovr(p)))}</span> <span class="dim">OVR ${(p.pot||ovr(p)).toFixed(1)}</span></span></div>
     ${rows}
     <p class="dim small">${atCeil?'He has reached his ceiling. Skill points can’t take him further.':'His skill points only go to him. Each upgrade adds one point; costs rise with the rating and stop at his ceiling.'} This season: ${ps.g} goals, ${ps.a} assists, ${ps.d} blocks, ${ps.pts} points played.</p>
-    <div class="row between"><div class="row"><button class="btn alt small" data-prev id="pprev">← Prev</button><button class="btn alt small" data-next id="pnext">Next →</button></div><button class="btn" id="pback" data-primary>Back to roster</button></div>
+    <div class="row between"><div class="row"><button class="btn alt small" data-prev id="pprev">← Prev</button><button class="btn alt small" data-next id="pnext">Next →</button></div><button class="btn" id="pback" ${renaming?'':'data-primary'}>Back to roster</button></div>
   </div></div>`);
   ui.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.up,c=spCost(p[a]);if((p.sp||0)>=c&&canUpgrade(p,a)){p.sp-=c;p[a]++;saveProgram();SFX.level();showCoachPlayer(p.id)}}));
   on('pprev',()=>showCoachPlayer(list[(i-1+list.length)%list.length].id));
   on('pnext',()=>showCoachPlayer(list[(i+1)%list.length].id));
   on('pback',showCoachHub);
+  on('rename',()=>showCoachPlayer(p.id,true));
+  on('rncancel',()=>showCoachPlayer(p.id));
+  on('rnsave',()=>{
+    const f=cleanName(document.getElementById('rnf').value,14),l=cleanName(document.getElementById('rnl').value,16);
+    if(f)p.first=f;if(l)p.last=l;saveProgram();showCoachPlayer(p.id);
+  });
+  if(renaming){const el=document.getElementById('rnf');el.focus();el.select()}
 }
 function showLinesEditor(){
   const ro=myRoster().slice().sort((a,b)=>('HCD'.indexOf(a.pos)-'HCD'.indexOf(b.pos))||(ovr(b)-ovr(a)));

@@ -11,10 +11,10 @@ Open `index.html` in a browser to play. It's a single file with no build step. `
 - **Throwing:** pull back to aim. While you pull you see the flight, where it lands, and a circle for how accurate this thrower is: low throwing ratings spray it, high ones put it on a dime.
 - **Position decides catches:** if the receiver is between the disc and their defender, it's a catch; if the defender is between the disc and the receiver, it's usually a D; on hucks, whoever is under it wins. Good hands or good defense can still steal one from a bad spot. Defenders front their man, and the ring under each receiver predicts the race if you threw it now: green, yellow or red.
 - **Star ratings:** most players are 1–3 stars, good programs have a few 4-star players, and 5-star players are rare (about two in the whole league).
-- **Head coach (main mode):** run a whole program, Retro Bowl style, for as many seasons as you like. Every player earns his own skill points by playing (points played, goals, assists, blocks, catches, wins), and you decide how to spend each player's points on his ratings, up to his ceiling. Wins also earn coaching credits (CC) for facilities (training center, conditioning, recruiting network) and for signing recruits each offseason when your seniors graduate. You set the O-line and D-line that every line call starts from.
+- **Head coach (main mode):** run a whole program, Retro Bowl style, for as many seasons as you like. Every player earns his own skill points by playing (points played, goals, assists, blocks, catches, wins), and you decide how to spend each player's points on his ratings, up to his ceiling. Wins also earn coaching credits (CC) for facilities (training center, conditioning, recruiting network) and for signing recruits each offseason when your seniors graduate. You set the O-line and D-line that every line call starts from. You can rename any of your players from his player screen.
 - **Career mode** (playing as one player for four years) is archived in `archive/career-mode/`, with notes on how to add it back.
 
-The schools are real and wear their actual school colors. Every player is generated and fictional.
+The schools are real and wear their actual school colors. Every player is generated and fictional, with names drawn from about 18,000 first/last combinations suited to the open division.
 
 ## Controls (laptop)
 | Input | Action |
