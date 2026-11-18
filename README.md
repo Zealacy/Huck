@@ -22,6 +22,7 @@ The schools are real and wear their actual school colors. Every player is genera
 | Press, drag back, release | Throw (like a slingshot: pull away from the target; pull farther for a longer throw) |
 | Hold Shift while pulling (or right-drag) | Put it up as a huck; long pulls become hucks on their own |
 | Esc while pulling | Cancel the throw |
+| Q / E | Curve the next throw left or right (press again for straight; resets after each throw). It still lands where you aim; bending around the mark makes a point-block much less likely, but the throw is a bit slower and less accurate |
 | Space | Pivot fake, which opens the mark briefly |
 | T | Timeout (two per game) |
 | Esc / P | Pause |

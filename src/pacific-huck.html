@@ -197,7 +197,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 15 · Nov 18';
+const VERSION='Version 16 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -371,6 +371,8 @@ window.addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(k===' '&&G&&!G.demo&&!G.paused&&!ui.firstElementChild){e.preventDefault();pivotFake();return}
   if(k==='t'){callTimeout();return}
+  if((k==='q'||k==='e')&&G&&!G.demo&&!G.paused&&G.phase==='live'&&G.holder>=0&&!ui.firstElementChild){
+    const want=k==='q'?-1:1;G.lean=G.lean===want?0:want;beep(G.lean?520:380,.04,'square',.02);return}
   if(k==='m'){muted=!muted;flashNote(muted?'Sound off':'Sound on');return}
   if(k==='escape'&&input.drag){e.preventDefault();input.drag=false;return} // cancel the throw you're lining up
   if((k==='escape'||k==='p')&&G&&!G.demo&&G.phase!=='over'&&G.phase!=='idle'){e.preventDefault();togglePause();return}
@@ -483,6 +485,18 @@ function later(fn,ms){const t=setTimeout(fn,ms);G.timers.push(t);return t}
 function banner(text,sub,col,dur){if(G.demo)return;G.banner={text,sub:sub||'',col:col||PAL.chalk,t:dur||1.2,d:dur||1.2}}
 function stallNum(){return G.stallT>0?Math.min(10,Math.floor(G.stallT/.85)+1):0}
 const flatRange=t=>34+t*1.1;
+// Curve: Q and E lean the next throw left or right (three states, resets after every throw). The disc
+// still lands where you aimed; only the path in between bends. The bend is how far the path bows out
+// at its middle, and the release leaves at an angle to the side of the straight line.
+function bendOf(fx,fy,tx,ty,lean){
+  const L=Math.hypot(tx-fx,ty-fy)||1,ux=(tx-fx)/L,uy=(ty-fy)/L,straight=Math.atan2(uy,ux);
+  if(!lean)return{k:0,nx:0,ny:0,rel:straight,straight};
+  // the thrower's left of the line of flight is (uy,-ux) on this field, since y grows downward
+  const nx=lean<0?uy:-uy,ny=lean<0?-ux:ux,k=2*Math.min(L*.3,7); // the path bows out k/2 at its middle
+  return{k,nx,ny,rel:Math.atan2(uy*L+2*k*ny,ux*L+2*k*nx),straight};
+}
+// offset of the bent path from the straight line at fraction s of the flight
+const bendAt=(b,s)=>s>0&&s<1?2*s*(1-s)*b.k:0;
 // How far off target a throw can land (yards): bad throwers spray it, good ones put it on a dime.
 function throwErr(thr,d,type){
   const e=d*(type==='flat'?(.075-thr*.0065):(.12-thr*.009));
@@ -543,7 +557,7 @@ function setupPossession(x,y,label){
     if(o===h){d.state='mark';d.x=h.x+Math.cos(G.markAng)*1.2;d.y=h.y+Math.sin(G.markAng)*1.2}
     else{d.state='guard';d.x=o.x+1;d.y=o.y}
   }
-  G.phase='ready';G.readyT=1.0;G.stallT=0;G.markerSet=false;G.settle=0;G.resetCut=false;G.fake=0;
+  G.phase='ready';G.readyT=1.0;G.stallT=0;G.markerSet=false;G.settle=0;G.resetCut=false;G.fake=0;G.lean=0;
   G.disc.x=x;G.disc.y=y;G.disc.z=1.1;
   G.camX=clamp(x-16,-4,FL+4-VIEW);
   if(label)banner(label,'',PAL.sea,1.0);
@@ -878,18 +892,23 @@ function throwDisc(type,ax,ay,ai){
   const maxR=type==='flat'?flatRange(thr):huckRange(thr);
   if(d>maxR){dx*=maxR/d;dy*=maxR/d;d=maxR}
   let tx=h.x+dx,ty=h.y+dy;
-  let err=throwErr(thr,d,type);
+  const lean=G.lean||0;G.lean=0; // a curve only lasts one throw
+  // a curved throw costs a little accuracy and a little time
+  let err=throwErr(thr,d,type)*(lean?1.2:1);
   const ea=Math.random()*Math.PI*2,er=err*Math.sqrt(Math.random())*1.2;
   tx+=Math.cos(ea)*er;ty+=Math.sin(ea)*er;
   const sp=type==='flat'?19+thr*.9:14+thr*.55;
-  const T=d/sp+(type==='huck'?.35:0);
+  const T=(d/sp+(type==='huck'?.35:0))*(lean?1.12:1);
   if(type==='huck'){tx+=G.wind.x*T*.3;ty+=G.wind.y*T*.3}
-  const ang=Math.atan2(ty-h.y,tx-h.x);
+  const bend=bendOf(h.x,h.y,tx,ty,lean);
+  const ang=bend.rel; // what the marker sees is where the disc leaves the hand
   const thrower=G.holder;
   type==='huck'?SFX.huck():SFX.throw();
   h.face=tx>=h.x?1:-1;
-  if(Math.abs(angDiff(ang,G.markAng))<.8&&G.markerSet&&d>3){
-    const pb=clamp(.5-thr*.035,.1,.5)*(G.fake>0?.2:1)*(type==='huck'?1.2:1);
+  const relIn=Math.abs(angDiff(bend.rel,G.markAng))<.8,straightIn=Math.abs(angDiff(bend.straight,G.markAng))<.8;
+  // straight through the wedge: full hand-block chance. Bent around it: much lower. Released into it: full.
+  if((relIn||straightIn)&&G.markerSet&&d>3){
+    const pb=clamp(.5-thr*.035,.1,.5)*(G.fake>0?.2:1)*(type==='huck'?1.2:1)*(relIn?1:.25);
     if(Math.random()<pb){
       G.holder=-1;G.disc.x=h.x+Math.cos(ang)*1.5;G.disc.y=h.y+Math.sin(ang)*1.5;G.disc.z=0;
       turnover({label:'HANDBLOCK',x:G.disc.x,y:G.disc.y,by:G.def[thrower],kind:'block',thrower:h});
@@ -897,7 +916,7 @@ function throwDisc(type,ax,ay,ai){
     }
   }
   const L=Math.hypot(tx-h.x,ty-h.y)||1;
-  G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower};
+  G.flight={type,fx:h.x,fy:h.y,tx,ty,t:0,T,dist:L,ux:(tx-h.x)/L,uy:(ty-h.y)/L,apex:type==='huck'?2.5+L*.11:0,touched:new Set(),thrower,bend};
   G.holder=-1;G.phase='flight';
   h.state='clear';h.timer=1;
   const rcv=chooseReceiver(tx,ty,thrower,T);
@@ -919,6 +938,7 @@ function updateFlight(dt){
   const f=G.flight;f.t+=dt;
   const{x,y,z,late}=discAt(f,f.t);
   G.disc.x=x;G.disc.y=y;G.disc.z=Math.max(0,z);
+  const bo=f.bend?bendAt(f.bend,f.t/f.T):0;G.disc.ox=f.bend?f.bend.nx*bo:0;G.disc.oy=f.bend?f.bend.ny*bo:0;
   if(z<=0){
     const out=x<0||x>FL||y<0||y>FW;
     turnover({label:out?'OUT':'TURF',x,y,kind:out?'out':'turf',f});return;
@@ -1324,7 +1344,7 @@ function drawPlayer(e,col){
   }
 }
 function drawDisc(){
-  const d=G.disc,X=sx(d.x),Y=sy(d.y);
+  const d=G.disc,fl=!!G.flight,X=sx(d.x+(fl?d.ox||0:0)),Y=sy(d.y+(fl?d.oy||0:0));
   ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(X-4,Y-1,8,3);
   const Z=Y-Math.round(d.z*ZH)-6;
   rect(X-5,Z,10,3,PAL.chalk);rect(X-3,Z-1,6,1,PAL.chalk);rect(X-4,Z+3,8,1,'#b9b5a6');
@@ -1358,12 +1378,13 @@ function drawAim(){
   ctx.beginPath();ctx.moveTo(input.ax,input.ay);ctx.lineTo(input.mx,input.my);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
   rect(input.ax-3,input.ay-3,6,6,PAL.chalk);
   if(pull<14)return;
-  const ang=Math.atan2(ty-h.y,tx-h.x);
-  const inW=Math.abs(angDiff(ang,G.markAng))<.8&&G.fake<=0;
+  const b=bendOf(h.x,h.y,tx,ty,G.lean||0);
+  const relIn=Math.abs(angDiff(b.rel,G.markAng))<.8,straightIn=Math.abs(angDiff(b.straight,G.markAng))<.8;
+  const inW=relIn&&G.fake<=0,around=!relIn&&straightIn&&G.lean&&G.fake<=0;
   const c=over?PAL.red:inW?PAL.sunset:PAL.chalk;
   const apex=2.5+d*.11;
   for(let s=.06;s<1;s+=huck?.04:.05){
-    const x=lerp(h.x,tx,s),y=lerp(h.y,ty,s),z=huck?lerp(1.5,1,s)+4*apex*s*(1-s):1.2;
+    const o=bendAt(b,s),x=lerp(h.x,tx,s)+b.nx*o,y=lerp(h.y,ty,s)+b.ny*o,z=huck?lerp(1.5,1,s)+4*apex*s*(1-s):1.2;
     rect(sx(x)-1,sy(y)-Math.round(z*ZH)-6,2,2,c);
   }
   const X=sx(tx),Y=sy(ty);
@@ -1373,6 +1394,7 @@ function drawAim(){
   rect(X-6,Y,4,2,c);rect(X+3,Y,4,2,c);rect(X,Y-4,2,3,c);rect(X,Y+3,2,3,c);
   text(`${huck?'HUCK':'FLAT'} ${Math.round(d)}YD`,X+14,Y-6,10,c,'left');
   if(inW)text('INTO THE MARK',X+14,Y+8,9,PAL.sunset,'left');
+  else if(around)text('AROUND THE MARK',X+14,Y+8,9,PAL.sea,'left');
   G.aimR=chooseReceiver(tx,ty)||null;
   h.face=tx>=h.x?1:-1;
 }
@@ -1422,15 +1444,15 @@ function drawHUD(){
     if(n>0){
       const X=sx(h.x),Y=sy(h.y)-13*P-22;
       const c=n>=8?PAL.red:n>=5?PAL.gold:PAL.chalk;
-      rect(X-30,Y-12,60,16,PAL.ink);
-      text(`STALL ${n}`,X,Y+1,10,c,'center',false);
+      const bw=G.lean?150:60;rect(X-bw/2,Y-12,bw,16,PAL.ink);
+      text(`STALL ${n}${G.lean?G.lean<0?' · CURVE L':' · CURVE R':''}`,X,Y+1,10,c,'center',false);
     }
   }
   if(G.phase==='ready')text('CHECK',W/2,sy(-1.5)-4,14,PAL.sea,'center');
   // controls strip
   if(G.phase==='live'||G.phase==='ready'||G.phase==='flight'){
     rect(0,H-20,W,20,'rgba(11,18,26,.72)');
-    text('DRAG BACK + RELEASE  THROW     SHIFT  HUCK     SPACE  PIVOT FAKE     T  TIMEOUT     ESC  PAUSE',W/2,H-6,10,PAL.dim,'center',false);
+    text('DRAG BACK + RELEASE  THROW    SHIFT  HUCK    Q/E  CURVE    SPACE  PIVOT FAKE    T  TIMEOUT    ESC  PAUSE',W/2,H-6,10,PAL.dim,'center',false);
   }
 }
 function drawBanner(){
@@ -1506,6 +1528,7 @@ function showHow(back){
         <span class="kbd">DRAG BACK</span><span>Press anywhere and pull back away from where you want to throw, like a slingshot. Let go to throw. Pull farther for a longer throw.</span>
         <span class="kbd">PREVIEW</span><span>While you pull you see the flight, where it lands, and a circle for how accurate this thrower is. Worse throwers have bigger circles.</span>
         <span class="kbd">SHIFT</span><span>Hold while pulling to put it up as a huck, a floating throw the wind pushes around. Long pulls become hucks on their own. Right-drag works too. Esc cancels a throw.</span>
+        <span class="kbd">Q / E</span><span>Curve the next throw left or right. Press again to go back to straight; it resets after every throw. The disc still lands where you aim. Bending it around the red wedge makes a point-block much less likely, at the cost of a slightly slower, less accurate throw.</span>
         <span class="kbd">SPACE</span><span>Pivot fake. Your marker bites and the mark opens for a moment.</span>
         <span class="kbd">T</span><span>Timeout while you hold the disc. Two per game. Your line gets some energy back.</span>
         <span class="kbd">ESC</span><span>Pause.</span>
