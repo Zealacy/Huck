@@ -212,7 +212,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 21 · Nov 18';
+const VERSION='Version 22 · Nov 18';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -720,8 +720,8 @@ function updateOff(e,dt,ph){
       if(e.timer<=0||dist(e.x,e.y,tx,ty)<1)e.state=e.lane==='H'?'handler':'stack';break}
     // stack cutter, in order: a hard jab to sell the other way, explode into the cut, look for it, then get out
     case'jab':steer(e,e.jx,e.jy,1,dt,70,12);e.timer-=dt;
-      if(e.timer<=0){e.state='scut';e.timer=e.deep?2.2:1.5;const d=G.def[e.idx];d.bite=Math.max(d.bite,e.pendBite)}break;
-    case'scut':steer(e,e.tx,e.ty,1.05,dt,65,8);e.timer-=dt;
+      if(e.timer<=0||dist(e.x,e.y,e.jx,e.jy)<.45){e.state='scut';e.cutT=0;e.timer=Math.max(e.deep?2.2:1.5,dist(e.x,e.y,e.tx,e.ty)/e.speed+.5);const d=G.def[e.idx];d.bite=Math.max(d.bite,e.pendBite)}break;
+    case'scut':steer(e,e.tx,e.ty,1.05,dt,65,8);e.timer-=dt;e.cutT=(e.cutT||0)+dt;
       if(e.timer<=0||dist(e.x,e.y,e.tx,e.ty)<.8){e.state='linger';e.timer=e.deep?.2:.35}break;
     case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e,true);break;
     case'sclear':e.timer-=dt;
@@ -748,28 +748,70 @@ function updateDef(d,dt,ph){
   else guardSteer(d,o,dt);
   if(d.bite>0)d.bite=Math.max(0,d.bite-dt*.35);
 }
-// Stack discipline, every style: the next cutter goes as soon as the one ahead has made his cut and
-// is clearing (now and then two go close together), and never more than two cutters are in the lane.
-// styleCuts picks who goes, under or deep, and to which side.
+// Stack discipline, every style: there is always a cut on. The next cutter starts his jab as the one
+// ahead finishes his cut (now and then two go close together), and if nobody is cutting, someone goes
+// right away. Never more than two cutters in the lane. styleCuts picks who goes, under or deep, and where.
 function inLane(e){return e.state==='jab'||e.state==='scut'||e.state==='linger'}
-// an under cutter has made his cut when he gets there; a deep cutter once he's a second into his sprint
-function madeCut(e){return!(e.state==='jab'||(e.state==='scut'&&!(e.deep&&e.timer<1.2)))}
+function cutting(e){return e.state==='jab'||e.state==='scut'}
+// an under cutter has made his cut when he's nearly there; a deep cutter once he's a second into his sprint
+function madeCut(e){
+  if(e.state==='jab')return false;
+  if(e.state!=='scut')return true;
+  return e.deep?e.cutT>=1:(e.cutT>=1.1||dist(e.x,e.y,e.tx,e.ty)<2.5);
+}
+// back at his spot, or out of the lane and nearly home: ready to go again
+function canCut(e){
+  if(e.state==='stack')return true;
+  if(e.state!=='sclear'||e.wp||e.timer>.8)return false;
+  const[x,y]=slotPos(e);return dist(e.x,e.y,x,y)<5;
+}
 function stackLogic(dt){
   if(G.style==='horiz')swingLogic(dt);
-  const act=G.activeCut>=0?G.off[G.activeCut]:null;
-  if(act&&act.idx!==G.holder&&!madeCut(act)&&!G.double)return; // he hasn't made his cut yet
-  if(G.off.filter(e=>e.lane==='C'&&inLane(e)).length>=2)return;
-  G.cutGap-=dt;if(G.cutGap>0)return;
+  const lane=G.off.filter(e=>e.lane==='C'&&inLane(e));
+  if(lane.length>=2)return;
+  if(lane.some(cutting)){
+    const act=G.activeCut>=0?G.off[G.activeCut]:null;
+    if(act&&act.idx!==G.holder&&!madeCut(act)&&!G.double)return; // he hasn't made his cut yet
+    G.cutGap-=dt;if(G.cutGap>0)return;
+  }
   styleCuts(dt);
+}
+// Make it a real cut: long enough to reach full speed and pull away from his defender. Under cuts come
+// back toward the disc at least 10 yards; deep cuts go at least 16 and always upfield of where he starts.
+const CUT_MIN={under:10,deep:16};
+function shapeCut(e,type,sd,tx,ty){
+  const a=G.anchor,lo=a.x+2;
+  if(type==='deep')tx=Math.max(tx,Math.min(107.5,e.x+14));
+  else tx=clamp(Math.min(tx,e.x-3),lo,100);
+  let dx=tx-e.x,dy=ty-e.y,L=Math.hypot(dx,dy);
+  if(L<CUT_MIN[type]){
+    const k=CUT_MIN[type]/Math.max(L,.5);
+    tx=e.x+dx*k;ty=e.y+dy*k;
+    tx=type==='deep'?Math.min(tx,107.5):clamp(tx,lo,100);ty=clamp(ty,2,38);
+    // still short (pinned on a sideline or near the end zone): keep going toward the side, then along the field
+    for(let i=0;i<12&&Math.hypot(tx-e.x,ty-e.y)<CUT_MIN[type];i++){
+      const ny=clamp(ty+sd*1.5,2,38);
+      if(Math.abs(ny-ty)>.01&&Math.abs(ny-e.y)>Math.abs(ty-e.y))ty=ny;
+      else if(type==='deep')tx=Math.min(107.5,tx+2);
+      else tx=Math.max(lo,tx-1.5);
+    }
+  }
+  return[tx,ty];
+}
+// sell it the other way first: a hard step of about two and a half yards away from where he's going
+function setJab(e,len){
+  const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
+  e.jx=clamp(e.x-dx/L*len,.5,108);e.jy=clamp(e.y-dy/L*len,1,39);
 }
 // Vertical: the front of the stack cuts under, the back goes deep, alternating. side: 'live' (the open
 // side, G.os) or 'dead'.
 function startStackCut(e,deep,side){
   const a=G.anchor,os=G.os,sd=side==='dead'?-os:os,y0=stackY();
-  e.deep=deep;e.state='jab';e.timer=.26;
-  e.jx=clamp(e.x+(deep?-1.8:2),.5,108);e.jy=clamp(e.y-sd*.8,1,39);
+  e.deep=deep;e.state='jab';e.timer=.45;
   if(deep){e.tx=clamp(a.x+rand(25,38),a.x+15,107.5);e.ty=clamp(y0+sd*rand(4,11),2.5,37.5)}
   else{e.tx=clamp(a.x+rand(7,12),.5,100);e.ty=clamp(y0+sd*rand(8,13),1.5,38.5)}
+  [e.tx,e.ty]=shapeCut(e,deep?'deep':'under',sd,e.tx,e.ty);
+  setJab(e,2.5);
   // does the defender buy the jab? Quick cutters against weak defenders get bigger bites.
   const d=G.def[e.idx];
   e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
@@ -863,7 +905,7 @@ function styleSetup(st){
 // pick the next cutter, the kind of cut and the side for this style
 function styleCuts(dt){
   const st=G.style||'vert';
-  const ready=G.stack.map(i=>G.off[i]).filter(e=>e&&e.state==='stack'&&e.idx!==G.holder);
+  const ready=G.stack.map(i=>G.off[i]).filter(e=>e&&e.idx!==G.holder&&canCut(e));
   if(!ready.length)return;
   const side=Math.random()<LIVE_SHARE?'live':'dead';
   let e=null,type='under';
@@ -886,10 +928,10 @@ function styleCuts(dt){
     startStyleCut(e,type,side);
   }
   G.activeCut=e.idx;
-  // vary the rhythm: usually a short gap, sometimes a pause, sometimes two go close together
+  // vary the rhythm: usually a short gap, sometimes a longer beat, sometimes two go close together
   const r=Math.random();
   G.double=r<.12;
-  G.cutGap=G.double?rand(.25,.5):r<.3?rand(.7,1.3):rand(.15,.5);
+  G.cutGap=G.double?rand(.3,.55):r<.27?rand(.4,.8):rand(.05,.3);
   if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:st==='vert'?'s'+G.stack.indexOf(e.idx):e.cslot,type,side});
 }
 // Horizontal picks by kind: an edge cutter goes deep down his sideline, a middle cutter comes under.
@@ -908,11 +950,10 @@ function startStyleCut(e,type,side){
     const edge=G.style==='horiz'&&Math.sign(home[1]-20)===sd;
     ty=20+sd*(edge?rand(11,16):rand(5,12));
   }
-  e.tx=clamp(tx,.5,type==='under'?100:107.5);e.ty=clamp(ty,2,38);e.deep=type==='deep';
-  e.state='jab';e.timer=.26;
-  // sell it the other way first
-  const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
-  e.jx=clamp(e.x-dx/L*1.8,.5,108);e.jy=clamp(e.y-dy/L*1.8,1,39);
+  [tx,ty]=shapeCut(e,type,sd,clamp(tx,.5,type==='under'?100:107.5),clamp(ty,2,38));
+  e.tx=tx;e.ty=ty;e.deep=type==='deep';
+  e.state='jab';e.timer=.45;
+  setJab(e,2.5);
   const d=G.def[e.idx];
   e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
 }
@@ -925,9 +966,8 @@ function swingLogic(dt){
   const e=hs[0];
   let side='live',ty=clamp(a.y+os*rand(6,10),1.5,38.5);
   if(Math.abs(ty-a.y)<4){side='dead';ty=clamp(a.y-os*rand(7,11),1.5,38.5)} // no room at the sideline
-  e.tx=clamp(a.x-rand(1,3),.5,107);e.ty=ty;e.deep=false;e.state='jab';e.timer=.18;
-  const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
-  e.jx=clamp(e.x-dx/L*1.2,.5,108);e.jy=clamp(e.y-dy/L*1.2,1,39);
+  e.tx=clamp(a.x-rand(1,3),.5,107);e.ty=ty;e.deep=false;e.state='jab';e.timer=.25;
+  setJab(e,1.5);
   e.pendBite=rand(0,.15);
   G.swingT=rand(2.5,4.5);
   if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:'H',type:'swing',side});
