@@ -212,7 +212,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 26 · Nov 18';
+const VERSION='Version 27 · Nov 19';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -574,15 +574,19 @@ function setupPossession(x,y,label){
     if(e===h)continue;
     const[tx,ty]=slotPos(e);e.x=tx+rand(-jit,jit);e.y=ty+rand(-jit,jit);e.vx=e.vy=0;e.state=e.lane==='H'?'handler':'stack';
   }
+  // their call for the point: person, or (more often in wind and rain) a zone
+  if(G.demo||G.schemePt!==G.pointNo||!G.dScheme){G.schemePt=G.pointNo;G.dScheme=pickScheme()}
+  for(const d of G.def){d.zr=null;d.juke=null;d.recover=0;d.swCd=0;d.cupSpot=null}
+  if(G.dScheme==='zone'){zoneRoles();zoneAssign()}
   for(const d of G.def){
     const o=G.off[d.idx];d.vx=d.vy=0;d.bite=0;
     if(o===h){d.state='mark';d.x=h.x+Math.cos(G.markAng)*1.2;d.y=h.y+Math.sin(G.markAng)*1.2}
-    else{d.state='guard';d.x=o.x+1;d.y=o.y}
+    else{d.state='guard';const[x,y]=G.dScheme==='zone'?zoneSpot(d):[o.x+1,o.y+G.os*1.2];d.x=x;d.y=y}
   }
   G.phase='ready';G.readyT=1.0;G.stallT=0;G.markerSet=false;G.settle=0;G.resetCut=false;G.fake=0;G.lean=0;
   G.disc.x=x;G.disc.y=y;G.disc.z=1.1;
   G.camX=clamp(x-16,-4,FL+4-VIEW);
-  if(label)banner(label,'',PAL.sea,1.0);
+  if(label)banner(label,G.dScheme==='zone'?"THEY'RE IN A ZONE":'',PAL.sea,G.dScheme==='zone'?1.6:1.0);
 }
 
 function nextPoint(){
@@ -599,7 +603,7 @@ function startPoint(kind){
   G.lastLine=G.myLine.slice();G.load=0;
   for(const p of G.myLine.concat(G.oppLine))G.pp[p.id]=(G.pp[p.id]||0)+1;
   buildEnts();
-  G.pointKind=kind;
+  G.pointKind=kind;G.pointNo=(G.pointNo||0)+1;
   if(kind==='O'){let x=rand(12,34);if(x<20)x=20;setupPossession(x,rand(8,32),G.styleChoice&&G.styleChoice!=='vert'?`OFFENSE · ${STYLE_NAME[G.styleChoice].toUpperCase()}`:'OFFENSE')}
   else{G.phase='wait';later(()=>startDefense(rand(80,90),true),200)}
 }
@@ -691,13 +695,152 @@ function histAt(o,t){
   for(let i=h.length-1;i>=0;i--)if(h[i][0]<=t)return{x:h[i][1],y:h[i][2]};
   return{x:h[0][1],y:h[0][2]};
 }
-function guardSteer(d,o,dt){
-  const lag=clamp(.2+(5.5-d.p.def)*.018+d.bite,.08,.75);
-  const hp=histAt(o,G.t-lag),a=G.anchor;
-  // person D: stay between your man and the disc
-  let nx=a.x-hp.x,ny=a.y-hp.y;const nl=Math.hypot(nx,ny)||1;
-  steer(d,hp.x+nx/nl*.8,hp.y+ny/nl*.8,1,dt,48,6);
+// ---------------------------------------------------------------- their defense
+// Person D, the way it's coached: the mark takes away the break side, so downfield defenders set up on the
+// force (open) side of their man, fronting him when he's close to the disc and dropping deeper the farther
+// out he is so he can't get beat long. More cushion if the man is faster, less near the end
+// zone; good defenders play tighter. A
+// defender far from the disc whose man is standing still sags toward the throwing lane (a poach). On a cut
+// he plays hip to hip, a step on the disc side. He reads his man a beat late, sooner if he's good, and a
+// good one sees where the cut is going. A quick cutter can juke a weak defender: he buys the jab, takes a
+// few steps the wrong way and has to turn his hips back. When a cutter gets loose, a teammate nearby whose
+// own man is standing still switches onto him.
+function guardSteer(d,o,dt,mul=1){
+  if(d.recover>0)d.recover-=dt;
+  // juked: he bought the fake and is still going the wrong way
+  if(d.juke){d.juke.t-=dt;steer(d,d.juke.x,d.juke.y,mul,dt,50,3);if(d.juke.t<=0){d.juke=null;d.recover=.3}return}
+  const lag=clamp(.33-d.p.def*.026,.06,.33),hp=histAt(o,G.t-lag),pp=histAt(o,G.t-lag-.12);
+  const ant=o.state==='scut'?.05+d.p.def*.02:0; // reads where the real cut is going (seconds ahead), not the jab
+  const mx=hp.x+(hp.x-pp.x)/.12*ant,my=hp.y+(hp.y-pp.y)/.12*ant;
+  const[tx,ty]=manSpot(d,o,mx,my);
+  steer(d,tx,ty,mul,dt,d.recover>0?24:48,6); // hips still turned after a juke: slow to get going again
   if(Math.abs(d.vx)<.5)d.face=o.x>d.x?1:-1;
+}
+function manSpot(d,o,mx,my){
+  const a=G.anchor,os=G.os,toD=Math.hypot(a.x-mx,a.y-my)||1,ux=(a.x-mx)/toD,uy=(a.y-my)/toD;
+  const inside=.8+d.p.def*.04; // on a cut: hip to hip, good defenders win more of the inside
+  if(o.state==='jab'||o.state==='scut'||o.state==='linger'||o.state==='chase'||o.state==='cut')return[mx+ux*inside,my+uy*inside];
+  const tight=1.35-d.p.def*.065,redZone=a.x>70?.6:1,slow=Math.max(0,o.speed-d.speed)*.35;
+  let x,y;
+  if(o.lane==='H'&&toD<14){x=mx+1.2;y=my+os*.9} // a handler: take away the up-the-line, give him the dump
+  else{
+    // close to the disc he fronts him (between him and the disc) to take away the easy under; the farther out
+    // the man is, the more he shifts to the force side and drops deep so he can't get beat long. Depth is
+    // measured along the man's line to the disc.
+    const far=clamp((toD-18)/22,0,1),dp=(-1+2.6*far)*tight*redZone+slow;
+    x=mx-ux*dp;y=my-uy*dp+os*(.3+.7*far)*tight;
+  }
+  if(toD>24&&o.state==='stack'){const k=clamp((toD-24)*.02,0,.2);x=lerp(x,(mx+a.x)/2,k);y=lerp(y,(my+a.y)/2,k)} // poach the lane a little
+  return[clamp(x,.5,109),clamp(y,.8,39.2)];
+}
+// Does his defender buy the jab? Quick cutters fake out weak defenders; a good one almost never bites.
+function jukeCheck(e){
+  const d=G.def[e.idx];if(!d||d.state!=='guard'||G.dScheme==='zone')return;
+  if(Math.random()>=clamp(.3+(e.p.spd-d.p.def)*.07,.03,.75))return;
+  const dx=e.jx-e.x,dy=e.jy-e.y,L=Math.hypot(dx,dy)||1;
+  d.juke={x:d.x+dx/L*3.2,y:d.y+dy/L*3.2,t:rand(.35,.55)*(1.15-d.p.def*.04)};
+}
+function swapGuards(i,j){const A=G.def[i],B=G.def[j];G.def[i]=B;G.def[j]=A;B.idx=i;A.idx=j}
+// A cutter broke free: the closest teammate whose own man is standing still picks him up, and the beaten
+// defender takes that teammate's man.
+function switchLogic(dt){
+  for(const o of G.off){
+    if(o.idx===G.holder||!(o.state==='jab'||o.state==='scut'||o.state==='linger'))continue;
+    const A=G.def[o.idx];if(A.state!=='guard'||A.swCd>0)continue;
+    const sep=dist(A.x,A.y,o.x,o.y);if(sep<3.5)continue;
+    let best=null,bd=1e9;
+    for(const B of G.def){
+      if(B===A||B.state!=='guard'||B.swCd>0||B.juke)continue;
+      const m=G.off[B.idx];if(m.idx===G.holder||m.state==='jab'||m.state==='scut'||m.state==='linger'||m.state==='chase')continue;
+      const db=dist(B.x,B.y,o.x,o.y);
+      if(db<Math.min(5,sep-1.2)&&dist(A.x,A.y,m.x,m.y)<10&&db<bd){bd=db;best=B}
+    }
+    if(!best)continue;
+    swapGuards(o.idx,best.idx);A.swCd=best.swCd=2;A.juke=null;best.recover=0;
+    G.switches=(G.switches||0)+1;
+    if(!G.demo){fx('call',0,0,0,{e:best,txt:'SWITCH!'});fx('call',0,0,0,{e:A,txt:'SWITCH!'})}
+  }
+}
+// ---- zone: a 3-3-1. Three in the cup around the thrower (one marks the inside, one sits in front on the
+// open side, one takes away the inside swing; only the marker within ten feet), a wall of three middles about twelve yards off the disc
+// with the near wing stepping up toward the line, and a deep who stays behind everybody. Each middle picks
+// up whoever comes into his area and gets between him and the disc. The cup slides with the disc, and the
+// cup player closest to the new thrower takes the mark. The wall plays it as a matchup zone: each middle picks
+// up the man in his area and sits in the throwing lane in front of him. More likely in wind and rain.
+function pickScheme(){return Math.random()<clamp(.12+Math.max(0,G.wind.mph-5)*.035+(G.rain?.08:0),.1,.55)?'zone':'person'}
+function zoneRoles(){
+  const ds=G.def.slice(),take=f=>{ds.sort((a,b)=>f(b)-f(a));return ds.shift()};
+  take(d=>d.p.spd+d.p.jmp).zr='deep';
+  const mids=[0,1,2].map(()=>take(d=>d.p.spd+d.p.def)).sort((a,b)=>a.y-b.y);
+  mids[0].zr='wingA';mids[1].zr='mm';mids[2].zr='wingB'; // wing A has the y<20 half, wing B the other
+  for(const d of ds)d.zr='cup';
+}
+function zoneAssign(){
+  const h=G.holder;if(h<0)return;
+  const ho=G.off[h],a=G.anchor,os=G.os,cl=(x,y)=>[clamp(x,.5,108),clamp(y,1.5,38.5)];
+  const cups=G.def.filter(d=>d.zr==='cup');
+  const mk=G.def[h].zr==='cup'?G.def[h]:cups.slice().sort((p,q)=>dist(p.x,p.y,ho.x,ho.y)-dist(q.x,q.y,ho.x,ho.y))[0];
+  // the marker takes away the inside; the point sits in front on the open side, where the mark sends it
+  const P1=cl(a.x+4.5,a.y+os*1.8),P2=cl(a.x+.5,a.y-os*5),rest=cups.filter(d=>d!==mk);
+  if(rest.length===2){
+    const c1=dist(rest[0].x,rest[0].y,...P1)+dist(rest[1].x,rest[1].y,...P2),c2=dist(rest[0].x,rest[0].y,...P2)+dist(rest[1].x,rest[1].y,...P1);
+    rest[0].cupSpot=c1<=c2?P1:P2;rest[1].cupSpot=c1<=c2?P2:P1;
+  }
+  // G.def[i] is whoever is responsible for G.off[i] right now: the marker for the thrower, then the closest pairs
+  const want=new Array(G.off.length);want[h]=mk;
+  const fd=G.def.filter(d=>d!==mk),fo=G.off.filter(o=>o.idx!==h);
+  while(fo.length){
+    let bi=0,bj=0,bv=1e9;
+    for(let i=0;i<fo.length;i++)for(let j=0;j<fd.length;j++){const v=dist(fo[i].x,fo[i].y,fd[j].x,fd[j].y);if(v<bv){bv=v;bi=i;bj=j}}
+    want[fo[bi].idx]=fd[bj];fo.splice(bi,1);fd.splice(bj,1);
+  }
+  G.def=want;
+  want.forEach((d,i)=>{d.idx=i;if(d.state!=='chase')d.state=i===h?'mark':'guard'});
+}
+// the most dangerous man in a zone player's area: cutters first, then whoever's closest to his spot
+function zoneThreat(x,y,R){
+  let thr=null,bs=0,bq=R;
+  for(const o of G.off){
+    if(o.idx===G.holder)continue;const q=dist(o.x,o.y,x,y);if(q>=R)continue;
+    const sc=R-q+(o.state==='jab'||o.state==='scut'||o.state==='linger'?4:0);
+    if(sc>bs){bs=sc;thr=o;bq=q}
+  }
+  return thr?{o:thr,q:bq}:null;
+}
+function zoneShade(x,y,R,lo,hi){
+  const T=zoneThreat(x,y,R);if(!T)return[x,y];
+  const a=G.anchor,o=T.o,L=Math.max(.1,dist(o.x,o.y,a.x,a.y)),w=lo+hi*(1-T.q/R);
+  return[lerp(x,o.x+(a.x-o.x)/L*1.2,w),lerp(y,o.y+(a.y-o.y)/L*1.2,w)];
+}
+function zoneSpot(d){
+  const a=G.anchor,os=G.os,cl=(x,y)=>[clamp(x,.5,108),clamp(y,1.5,38.5)];
+  if(d.zr==='cup'){
+    // anyone who sets up in the cup gets swarmed: step between him and the disc, but stay ten feet off the thrower
+    let[x,y]=zoneShade(...(d.cupSpot||cl(a.x+4.5,a.y+os*1.8)),7,.3,.55);
+    const q=dist(x,y,a.x,a.y);if(q<3.5){const k=3.5/Math.max(q,.1);x=a.x+(x-a.x)*k;y=a.y+(y-a.y)*k}
+    return cl(x,y);
+  }
+  if(d.zr==='deep'){
+    let x=Math.min(a.x+25,104),y=20+(a.y-20)*.25;
+    for(const o of G.off)if(o.idx!==G.holder&&o.x>x-6)x=Math.max(x,Math.min(o.x+3,106)); // deeper than the deepest
+    return cl(x,y);
+  }
+  const side=d.zr==='wingA'?-1:d.zr==='wingB'?1:0;
+  let x,y;
+  if(!side){x=a.x+12;y=lerp(20,a.y,.45)}
+  else{const near=side===os;x=a.x+(near?8:14);y=20+side*(near?12:11)}
+  // a matchup zone: if the man handed to him is in his area, sit in the throwing lane a few yards in front of
+  // him; otherwise guard the most dangerous man around (or just his spot)
+  const R=side?10:12,m=G.off[d.idx];
+  if(m&&m.idx!==G.holder&&dist(m.x,m.y,x,y)<R){
+    const L=Math.max(.1,dist(m.x,m.y,a.x,a.y)),k=clamp((L-2.5)/L,.3,.9);
+    x=lerp(x,a.x+(m.x-a.x)*k,.85);y=lerp(y,a.y+(m.y-a.y)*k,.85);
+  }else[x,y]=zoneShade(x,y,R,.35,.55);
+  return cl(x,y);
+}
+function defSteer(d,o,dt,mul){
+  if(G.dScheme==='zone'&&d.zr){const[x,y]=zoneSpot(d);steer(d,x,y,.95*mul,dt,45,6);if(Math.abs(d.vx)<.5)d.face=G.anchor.x>d.x?1:-1;return}
+  guardSteer(d,o,dt,mul);
 }
 function markSteer(d,dt){
   const h=G.holder>=0?G.off[G.holder]:null;
@@ -720,7 +863,7 @@ function updateOff(e,dt,ph){
       if(e.timer<=0||dist(e.x,e.y,tx,ty)<1)e.state=e.lane==='H'?'handler':'stack';break}
     // stack cutter, in order: a hard jab to sell the other way, explode into the cut, look for it, then get out
     case'jab':steer(e,e.jx,e.jy,1,dt,70,12);e.timer-=dt;
-      if(e.timer<=0||dist(e.x,e.y,e.jx,e.jy)<.45){e.state='scut';e.cutT=0;e.timer=Math.max(e.deep?2.2:1.5,dist(e.x,e.y,e.tx,e.ty)/e.speed+.5);const d=G.def[e.idx];d.bite=Math.max(d.bite,e.pendBite)}break;
+      if(e.timer<=0||dist(e.x,e.y,e.jx,e.jy)<.45){e.state='scut';e.cutT=0;e.timer=Math.max(e.deep?2.2:1.5,dist(e.x,e.y,e.tx,e.ty)/e.speed+.5);}break;
     case'scut':steer(e,e.tx,e.ty,1.05,dt,65,8);e.timer-=dt;e.cutT=(e.cutT||0)+dt;
       if(e.timer<=0||dist(e.x,e.y,e.tx,e.ty)<.8){e.state='linger';e.timer=e.deep?.2:.35}break;
     case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e);break;
@@ -740,13 +883,13 @@ function hold(e,tx,ty,dt){
 }
 function updateDef(d,dt,ph){
   const o=G.off[d.idx];
+  if(d.swCd>0)d.swCd-=dt;
   if(d.state==='mark')markSteer(d,dt);
-  else if(ph==='ready')steer(d,o.x+1,o.y,.6,dt);
+  else if(ph==='ready')defSteer(d,o,dt,.7);
   else if(d.state==='chase'){d.chaseDelay-=dt;
     // race to the spot just ahead of where his man meets the disc: in front, he takes it; beaten, the man's body is in the way
-    if(o.state==='chase'&&!d.help){const f=G.flight;d.tx=o.tx-(f?f.ux:0);d.ty=o.ty-(f?f.uy:0)}if(d.chaseDelay<=0)steer(d,d.tx,d.ty,1.08,dt,55,9);else guardSteer(d,o,dt)}
-  else guardSteer(d,o,dt);
-  if(d.bite>0)d.bite=Math.max(0,d.bite-dt*.35);
+    if(o.state==='chase'&&!d.help){const f=G.flight;d.tx=o.tx-(f?f.ux:0);d.ty=o.ty-(f?f.uy:0)}if(d.chaseDelay<=0)steer(d,d.tx,d.ty,1.08,dt,55,9);else defSteer(d,o,dt,1)}
+  else defSteer(d,o,dt,1);
 }
 // Stack discipline, every style: there is always a cut on. The next cutter starts his jab as the one
 // ahead finishes his cut (now and then two go close together), and if nobody is cutting, someone goes
@@ -811,10 +954,7 @@ function startStackCut(e,deep,side){
   if(deep){e.tx=clamp(a.x+rand(25,38),a.x+15,107.5);e.ty=clamp(y0+sd*rand(4,11),2.5,37.5)}
   else{e.tx=clamp(a.x+rand(7,12),.5,100);e.ty=clamp(y0+sd*rand(8,13),1.5,38.5)}
   [e.tx,e.ty]=shapeCut(e,deep?'deep':'under',sd,e.tx,e.ty);
-  setJab(e,2.5);
-  // does the defender buy the jab? Quick cutters against weak defenders get bigger bites.
-  const d=G.def[e.idx];
-  e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
+  setJab(e,2.5);jukeCheck(e);
 }
 
 // ---------------------------------------------------------------- offense styles
@@ -956,9 +1096,7 @@ function startStyleCut(e,type,side){
   [tx,ty]=shapeCut(e,type,sd,clamp(tx,.5,type==='under'?100:107.5),clamp(ty,2,38));
   e.tx=tx;e.ty=ty;e.deep=type==='deep';
   e.state='jab';e.timer=.45;
-  setJab(e,2.5);
-  const d=G.def[e.idx];
-  e.pendBite=Math.random()<clamp(.32+(e.p.spd-d.p.def)*.06,.08,.65)?rand(.28,.45):rand(0,.06);
+  setJab(e,2.5);jukeCheck(e);
 }
 // Horizontal: every few seconds the handler farthest from the live side swings across to it
 function swingLogic(dt){
@@ -970,8 +1108,7 @@ function swingLogic(dt){
   let side='live',ty=clamp(a.y+os*rand(6,10),1.5,38.5);
   if(Math.abs(ty-a.y)<4){side='dead';ty=clamp(a.y-os*rand(7,11),1.5,38.5)} // no room at the sideline
   e.tx=clamp(a.x-rand(1,3),.5,107);e.ty=ty;e.deep=false;e.state='jab';e.timer=.25;
-  setJab(e,1.5);
-  e.pendBite=rand(0,.15);
+  setJab(e,1.5);jukeCheck(e);
   G.swingT=rand(2.5,4.5);
   if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:'H',type:'swing',side});
 }
@@ -1084,15 +1221,18 @@ function openness(e){
   const r={x:e.x,y:e.y,vx:e.vx,vy:e.vy,speed:e.speed,p:e.p,tx:ax,ty:ay};
   const d={x:od.x,y:od.y,vx:od.vx,vy:od.vy,speed:od.speed,p:od.p};
   // everyone else keeps moving with the man he guards
-  const others=G.def.filter(q=>q!==od).map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,p:q.p,mark:q.idx===G.holder}));
-  let delay=clamp(.24-od.p.def*.014,.08,.22);
+  const others=G.def.filter(q=>q!==od).map(q=>({x:q.x,y:q.y,vx:q.vx,vy:q.vy,p:q.p,speed:q.speed,mark:q.idx===G.holder,
+    pursue:G.dScheme==='zone'&&q.idx!==G.holder&&dist(q.x,q.y,ax,ay)<=8}));
+  let delay=clamp(.24-od.p.def*.014,.08,.22)*(G.dScheme==='zone'?.5:1);
   const dt=1/60,end=T+(huck?.28:.36);
   for(f.t=dt;f.t<=end;f.t+=dt){
     const m=meetPoint(r,f);r.tx=m[0];r.ty=m[1];
     steer(r,r.tx,r.ty,1.12,dt,60,25);
-    if(delay>0)delay-=dt;else steer(d,r.tx-f.ux,r.ty-f.uy,1.08,dt,55,9);
+    // before he reacts to the throw he's still guarding: on the man's disc side, stepping into the lane with him
+    if(delay>0){delay-=dt;if(G.dScheme!=='zone'){const Lr=Math.hypot(h.x-r.x,h.y-r.y)||1;steer(d,r.x+(h.x-r.x)/Lr*.8,r.y+(h.y-r.y)/Lr*.8,1,dt,48,6)}}
+    else steer(d,r.tx-f.ux,r.ty-f.uy,1.08,dt,55,9);
     r.x+=r.vx*dt;r.y+=r.vy*dt;d.x+=d.vx*dt;d.y+=d.vy*dt;
-    if(f.t<.7)for(const q of others){q.x+=q.vx*dt;q.y+=q.vy*dt}
+    for(const q of others){if(q.pursue&&f.t>.15)steer(q,ax,ay,1.08,dt,55,9);if(q.pursue||f.t<.7){q.x+=q.vx*dt;q.y+=q.vy*dt}}
     separate(r,d);for(const q of others)separate(r,q);
     const c=discAt(f,f.t);
     if(c.z<=0)return .95;
@@ -1177,12 +1317,17 @@ function throwDisc(type,ax,ay,ai){
   if(rcv){
     const[mx,my]=meetPoint(rcv,G.flight);
     rcv.state='chase';rcv.tx=clamp(mx,-1,FL+1);rcv.ty=clamp(my,-1,FW+1);
-    const dd=G.def[rcv.idx];dd.state='chase';dd.tx=mx;dd.ty=my;dd.chaseDelay=clamp(.24-dd.p.def*.014,.08,.22);
+    // zone defenders face the thrower instead of their man, so they break on a throw sooner
+    const dd=G.def[rcv.idx];dd.state='chase';dd.tx=mx;dd.ty=my;dd.chaseDelay=clamp(.24-dd.p.def*.014,.08,.22)*(G.dScheme==='zone'?.5:1);
   }
   if(type==='huck'){
     let help=null,hd=20;
     for(const dd of G.def){if(dd.state==='chase'||dd.idx===thrower)continue;const q=dist(dd.x,dd.y,tx,ty);if(q<hd){hd=q;help=dd}}
     if(help){help.state='chase';help.help=true;help.tx=tx;help.ty=ty;help.chaseDelay=.5}
+  }
+  if(G.dScheme==='zone')for(const dd of G.def){
+    if(dd.state==='chase'||dd.idx===thrower||dist(dd.x,dd.y,tx,ty)>8)continue;
+    dd.state='chase';dd.help=true;dd.tx=tx;dd.ty=ty;dd.chaseDelay=.15;
   }
   G.def[thrower].state='guard';
   return true;
@@ -1347,6 +1492,7 @@ function update(dt){
   if(ph==='ready'||ph==='live'||ph==='flight'||ph==='dead'){
     for(const o of G.off){o.hist.push([G.t,o.x,o.y]);while(o.hist.length>2&&o.hist[0][0]<G.t-1.2)o.hist.shift()}
     if(ph==='live')liveLogic(dt);
+    if((ph==='live'||ph==='ready')&&G.holder>=0){if(G.dScheme==='zone')zoneAssign();else if(ph==='live')switchLogic(dt)}
     for(const o of G.off)updateOff(o,dt,G.phase);
     for(const d of G.def)updateDef(d,dt,G.phase);
     for(const e of G.off)integrate(e,dt);
@@ -1597,7 +1743,7 @@ const ACT_LEN={throw:.32,catch:.3,drop:.38,block:.36,sky:.55,layout:.9},LAY_AIR=
 function act(e,k,o){if(e)e.act=Object.assign({k,t:0,d:ACT_LEN[k],face:(o&&o.dir)||e.face||1},o||{})}
 // a layout goes the way he's running (or at the disc if he's barely moving)
 function diveDir(e,x){return Math.abs(e.vx)>.5?Math.sign(e.vx):x>=e.x?1:-1}
-function fx(kind,x,y,z,o){(G.fx=G.fx||[]).push(Object.assign({kind,x,y,z:z||0,t:0,d:{pop:.22,hit:.34,dust:.5}[kind]||.3,s:Math.random()},o||{}))}
+function fx(kind,x,y,z,o){(G.fx=G.fx||[]).push(Object.assign({kind,x,y,z:z||0,t:0,d:{pop:.22,hit:.34,dust:.5,call:1}[kind]||.3,s:Math.random()},o||{}))}
 function faceTo(e,x){if(e&&Math.abs(x-e.x)>.05)e.face=x>e.x?1:-1}
 function looseDisc(x,y,z,ux,uy,sp,up){G.disc.x=x;G.disc.y=y;G.disc.z=Math.max(0,z);G.loose={vx:ux*sp,vy:uy*sp,vz:up}}
 function turnoverFx(o,z0){
@@ -1659,6 +1805,7 @@ function drawFx(){
     else if(p.kind==='hit'){
       const r=4+k*11;rect(X-3,Y-3,6,6,k<.3?PAL.chalk:PAL.gold);
       for(let i=0;i<8;i++){const a=i*Math.PI/4+p.s;rect(X+Math.cos(a)*r-1,Y+Math.sin(a)*r*.7-1,i%2?2:3,i%2?2:3,i%2?PAL.sunset:PAL.gold)}
+    }else if(p.kind==='call'){const e=p.e;rect(sx(e.x)-26,sy(e.y)-13*P-24-k*6,52,12,'rgba(11,18,26,.75)');text(p.txt,sx(e.x),sy(e.y)-13*P-15-k*6,8,PAL.gold,'center',false)
     }else if(p.kind==='dust'){for(let i=0;i<3;i++){const ox=(i-1)*4+Math.sin(p.s*9+i)*2,oy=-k*9-i;rect(sx(p.x)+ox-1,sy(p.y)+oy-2,3,3,'#cdbb92')}}
     ctx.globalAlpha=1;
   }
@@ -1805,8 +1952,8 @@ function drawHUD(){
     if(n>0){
       const X=sx(h.x),Y=sy(h.y)-13*P-22;
       const c=n>=8?PAL.red:n>=5?PAL.gold:PAL.chalk;
-      const bw=G.lean?150:60;rect(X-bw/2,Y-12,bw,16,PAL.ink);
-      text(`STALL ${n}${G.lean?G.lean<0?' · CURVE L':' · CURVE R':''}`,X,Y+1,10,c,'center',false);
+      const zn=G.dScheme==='zone',bw=60+(G.lean?90:0)+(zn?54:0);rect(X-bw/2,Y-12,bw,16,PAL.ink);
+      text(`STALL ${n}${zn?' · ZONE':''}${G.lean?G.lean<0?' · CURVE L':' · CURVE R':''}`,X,Y+1,10,c,'center',false);
     }
   }
   if(G.phase==='ready')text('CHECK',W/2,sy(-1.5)-4,14,PAL.sea,'center');
@@ -1906,6 +2053,7 @@ function showHow(back){
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
         <li>Rosters have 14 players. Before every point you pick seven: an O-line when you receive, a D-line when you pull. Players who stay on tire and slow down, so rotate.</li>
         <li>Subs only happen between points, unless someone gets hurt on a layout or a sky battle.</li>
+        <li>Their defense mostly plays person D: each defender sets up on the force side of his man and a step deep, gives more cushion the farther his man is from the disc, and reads cuts a beat late. Quick cutters can juke weak defenders; a strong defender stays locked on. When a cutter breaks free, a teammate nearby may switch onto him. In wind and rain they're more likely to play a 3-3-1 zone (the stall box says ZONE): a cup of three around the thrower, a wall of three behind it and a deep. Swing it around the cup or throw over it.</li>
         <li>Pick an offense style before the game: Vertical, Horizontal, 4-1 or 1-4. Head coach mode sets it in the hub; quick games set it on the pre-game screen. It runs on your O-line points.</li>
       </ul>
     </div>
