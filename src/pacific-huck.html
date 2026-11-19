@@ -212,7 +212,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 29 · Nov 19';
+const VERSION='Version 30 · Nov 19';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -388,7 +388,7 @@ window.addEventListener('keydown',e=>{
   if(k==='m'){muted=!muted;flashNote(muted?'Sound off':'Sound on');return}
   if((k==='escape'||k==='p')&&G&&!G.demo&&G.phase!=='over'&&G.phase!=='idle'){e.preventDefault();togglePause();return}
   if(k==='enter'){const b=ui.querySelector('[data-primary]');if(b&&!b.disabled){e.preventDefault();b.click()}return}
-  if(k==='1'||k==='2'){const b=ui.querySelector(`[data-key="${k}"]`);if(b){e.preventDefault();b.click()}}
+  if(k==='1'||k==='2'){const b=ui.querySelector(`[data-key="${k}"]`);if(b&&!b.disabled&&!b.closest('[hidden]')){e.preventDefault();b.click()}}
   if(k==='arrowleft'||k==='arrowright'){const b=ui.querySelector(k==='arrowleft'?'[data-prev]':'[data-next]');if(b){e.preventDefault();b.click()}}
 });
 window.addEventListener('keyup',e=>{if(e.key==='Shift')input.shift=false});
@@ -1537,7 +1537,13 @@ function startDefense(x,fromPull){
     <div class="ticker" id="ticker" hidden></div>
     <div class="row end" id="dfoot"></div>
   </div></div>`;
-  ui.querySelectorAll('.choice').forEach(b=>b.addEventListener('click',()=>{SFX.click();runDefense(x,fromPull,b.dataset.s)}));
+  // only the first pick counts: no double calls from a double-click or mashing 1 / 2
+  let called=false;
+  ui.querySelectorAll('.choice').forEach(b=>b.addEventListener('click',()=>{
+    if(called||G.phase!=='defense')return;called=true;
+    ui.querySelectorAll('.choice').forEach(c=>c.disabled=true);
+    SFX.click();runDefense(x,fromPull,b.dataset.s);
+  }));
   ui.querySelector('.choice').focus();
 }
 function simDefense(startX,fromPull,scheme){
@@ -1592,7 +1598,7 @@ function runDefense(x,fromPull,scheme){
       res.scored?SFX.turn():SFX.score();
       const foot=document.getElementById('dfoot');if(!foot)return;
       foot.innerHTML=`<button class="btn" data-primary>${res.scored?'Receive the pull':'Take it the other way'} <span class="kbd">Enter</span></button>`;
-      foot.querySelector('button').addEventListener('click',()=>finishDefense(res));
+      foot.querySelector('button').addEventListener('click',()=>finishDefense(res),{once:true});
       foot.querySelector('button').focus();
       return;
     }
