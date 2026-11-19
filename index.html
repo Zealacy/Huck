@@ -219,7 +219,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 28 · Nov 19';
+const VERSION='Version 29 · Nov 19';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1390,8 +1390,9 @@ function updateFlight(dt){
     const{pD,by}=contest(c.e,x,y,f.ux,f.uy,c.dd,huck,late,d=>f.touched.has(d)||(d.idx===f.thrower&&f.t<.4));
     if(by&&Math.random()<pD){faceTo(c.e,G.off[f.thrower].x);act(c.e,huck?'sky':'catch');turnover({label:huck?'SKYED!':late?'LAYOUT D':'D!',x,y,by,kind:'d',f});if(late)maybeInjury(by,.05);return}
     // he won the position battle; now he just has to hang on
-    let pc=.95+c.e.p.hnd*.005-(late?.15:0)-(pD>.3?.05:0)-(huck?.03:0);
-    pc=clamp(pc,.35,.985);
+    // drops are rare, like real ultimate: worse hands, tired legs, a defender on him, a huck or a layout make them likelier
+    const miss=.05-c.e.p.hnd*.005+(late?.15:0)+(pD>.3?.05:0)+(huck?.03:0);
+    const pc=1-clamp(miss*.5,.006,.33);
     if(Math.random()<pc){doCatch(c.e,f,late?'LAYOUT!':null);if(late)maybeInjury(c.e,.05)}
     else turnover({label:'DROP',x,y,kind:'drop',recv:c.e,f});
   }
