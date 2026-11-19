@@ -103,6 +103,12 @@ p{margin:0}
 .stylepick.compact .sgrid{gap:calc(var(--u)*5)}.stylepick.compact .sbtn{font-size:calc(var(--u)*11);padding:calc(var(--u)*3)}
 .stylepick.ro .sbtn{width:calc(var(--u)*92);flex:none;cursor:default}
 .sd-f{fill:var(--grass)}.sd-h{fill:var(--gold)}.sd-c{fill:var(--sea)}.sd-d{fill:var(--chalk)}
+/* hall of fame */
+.hofpanel{width:calc(var(--u)*820)}
+.hof-list{display:flex;flex-direction:column;gap:calc(var(--u)*6)}
+.hof-card{background:var(--panel-2);padding:calc(var(--u)*6) calc(var(--u)*10);display:flex;flex-direction:column;gap:calc(var(--u)*3)}
+.hof-boards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:calc(var(--u)*10)}
+.career{display:flex;flex-wrap:wrap;column-gap:calc(var(--u)*10);row-gap:calc(var(--u)*2);font-size:calc(var(--u)*13);background:var(--panel-2);padding:calc(var(--u)*6) calc(var(--u)*8)}
 /* tables */
 table{border-collapse:collapse;width:100%;font-size:calc(var(--u)*14);font-variant-numeric:tabular-nums}
 th{font-family:var(--font-display);font-size:calc(var(--u)*10);color:var(--sea);text-align:left;padding:calc(var(--u)*3) calc(var(--u)*6);letter-spacing:.08em}
@@ -212,7 +218,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 30 · Nov 19';
+const VERSION='Version 31 · Nov 19';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -2141,6 +2147,7 @@ function migrate(c){
   if(!c||!c.rosters)return null;
   if(c.me&&c.me.sta==null)c.me.sta=3;
   if(c.mode==='coach'&&!STYLES.includes(c.style))c.style='vert'; // saves from before offense styles
+  if(c.mode==='coach'){c.alumni=c.alumni||[];c.hof=c.hof||[]} // saves from before the Hall of Fame
   delete c.playbook; // left over from the removed playbook
   for(const t of TEAMS){
     if(!c.rosters[t.id]){c.prestige[t.id]=t.elite?5:randi(1,5);c.rosters[t.id]=genRoster(Math.random,c.prestige[t.id],t.elite)}
@@ -2290,6 +2297,37 @@ function seasonBlock(){
   return`<div class="two"><div><h3>${S.phase==='reg'?'Schedule':'Bracket'}</h3><div class="sched">${S.phase==='reg'?sched:po}</div></div>
     <div><h3>Standings</h3><table><tbody>${ranks}</tbody></table><div class="dim small">Top 8 make the Pacific Championships.</div></div></div>`;
 }
+
+// ---------------------------------------------------------------- lifetime stats and the Hall of Fame
+// Every player carries his career line (p.life). When a senior graduates, his career earns legacy points:
+// goals, assists, blocks (double), points played, season honors, titles and how good he got. Enough and
+// he goes into the program's Hall of Fame.
+const HOF_BAR=80,HOF_MIN_GP=10;
+function lifeOf(p){
+  if(!p.life)p.life={gp:0,pts:0,g:0,a:0,d:0,ct:0,c:0,to:0,years:[],honors:[],titles:0,peak:starsOf(p)};
+  return p.life;
+}
+function legacy(L){
+  const n=k=>L.honors.filter(h=>h.startsWith(k)).length;
+  return Math.round(L.g+L.a+2*L.d+.05*L.pts+12*n('Team MVP')+10*n('Defensive Player')+4*L.titles+(L.peak>=5?10:L.peak>=4?4:0));
+}
+function careerLine(L){return`${L.gp} GP · ${L.pts} PTS · ${L.g} G · ${L.a} A · ${L.d} D · ${L.c} comp · ${L.to} TO`}
+function showHallOfFame(){
+  const hof=(CAR.hof||[]).slice().sort((a,b)=>b.classOf-a.classOf||b.legacy-a.legacy);
+  // all-time leaders: graduates plus the current roster
+  const pool=(CAR.alumni||[]).map(a=>({name:a.name,tag:`Class of year ${a.classOf}`,L:a.life,hof:a.hof})).concat(myRoster().map(p=>({name:pname(p),tag:`Current · ${YR[p.grade]||''}`,L:lifeOf(p),hof:false})));
+  const board=(k,label)=>{const top=pool.filter(x=>x.L[k]>0).sort((a,b)=>b.L[k]-a.L[k]).slice(0,5);
+    return`<div><h3>${label}</h3><table><tbody>${top.map((x,i)=>`<tr><td class="dim">${i+1}</td><td class="trunc">${esc(x.name)}${x.hof?' <b class="gold" title="Hall of Fame">★HOF</b>':''}<div class="dim small">${esc(x.tag)}</div></td><td class="n">${x.L[k]}</td></tr>`).join('')||'<tr><td class="dim">Nobody yet.</td></tr>'}</tbody></table></div>`};
+  show(`<div class="screen"><div class="panel hofpanel">
+    <div class="row between"><div><div class="eyebrow">${esc(TEAM(CAR.teamId).name)} · Program history</div><h2>Hall of Fame</h2></div><button class="btn" id="hback" data-primary>Back <span class="kbd">Enter</span></button></div>
+    <p class="dim small">Players are inducted when they graduate after a standout career. Legacy points: 1 per goal, 1 per assist, 2 per block, 1 per 20 points played, 12 per Team MVP, 10 per Defensive Player of the Year, 4 per title, plus a bonus for reaching 4 or 5 stars. ${HOF_BAR} gets you in (with at least ${HOF_MIN_GP} games).</p>
+    <div class="hof-list">${hof.length?hof.map(h=>`<div class="hof-card"><div class="row between"><div><b class="gold">★</b> <b>${esc(h.name)}</b> <span class="dim">#${h.num} · ${POS[h.pos]} · Class of year ${h.classOf}</span></div><span class="stars">${'★'.repeat(h.life.peak||0)}</span></div>
+      <div class="small">${careerLine(h.life)} · ${h.life.titles} title${h.life.titles===1?'':'s'} · ${h.legacy} legacy points</div>${h.life.honors.length?`<div class="dim small">${h.life.honors.map(esc).join(' · ')}</div>`:''}</div>`).join(''):'<p class="dim">Nobody yet. Develop a star, win some titles, and see who makes it when the seniors graduate.</p>'}</div>
+    <h3>All-time program leaders</h3>
+    <div class="hof-boards">${board('g','Goals')}${board('a','Assists')}${board('d','Blocks')}${board('pts','Points played')}</div>
+  </div></div>`);
+  on('hback',showCoachHub);
+}
 function showCoachHub(){
   if(!G||!G.demo)startDemo();
   if(CAR.offseason){showRecruiting();return}
@@ -2313,7 +2351,7 @@ function showCoachHub(){
   show(`<div class="screen"><div class="panel hub">
     <div class="row between"><div><div class="eyebrow">Head coach · Year ${CAR.year}</div><h2>${esc(t.name)}</h2>
       <div class="dim">${esc(t.city)}, ${t.st} · ${st.w}-${st.l} this year · ${CAR.titles} title${CAR.titles===1?'':'s'} · ${CAR.totals.w}-${CAR.totals.l} all-time</div></div>
-      <div class="row"><span class="ccbadge" title="Coaching credits: facilities and recruiting">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
+      <div class="row"><span class="ccbadge" title="Coaching credits: facilities and recruiting">${CAR.cc} CC</span><button class="btn alt small" id="klines">Lines</button><button class="btn alt small" id="kfac">Facilities</button><button class="btn alt small" id="khof">Hall of Fame</button><button class="btn alt small" id="kquit">Save and exit</button></div></div>
     <div class="hub-grid coach">
       <section class="card">
         <div class="row between"><h3>Roster</h3><span class="dim small">Players earn skill points by playing. Click one to spend his.</span></div>
@@ -2326,7 +2364,7 @@ function showCoachHub(){
   ui.querySelectorAll('tr[data-pid]').forEach(tr=>{const go=()=>{SFX.click();showCoachPlayer(tr.dataset.pid)};tr.addEventListener('click',go);tr.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();e.stopPropagation();go()}})});
   showStylePicker(document.getElementById('stylepick'),'coach','compact');
   on('kplay',playCoachGame);on('koff',startOffseason);
-  on('klines',showLinesEditor);on('kfac',showFacilities);
+  on('klines',showLinesEditor);on('kfac',showFacilities);on('khof',showHallOfFame);
   on('kquit',()=>{saveProgram();showTitle()});
 }
 function cleanName(v,max){return String(v||'').replace(/[<>]/g,'').replace(/\s+/g,' ').trim().slice(0,max)}
@@ -2350,6 +2388,7 @@ function showCoachPlayer(id,renaming){
     <div class="row between"><span>Now <span class="stars">${starStr(starsOf(p))}</span> <span class="dim">OVR ${ovr(p).toFixed(1)}</span></span><span>Ceiling <span class="stars">${starStr(starsAt(p.pot||ovr(p)))}</span> <span class="dim">OVR ${(p.pot||ovr(p)).toFixed(1)}</span></span></div>
     ${rows}
     <p class="dim small">${atCeil?'He has reached his ceiling. Skill points can’t take him further.':'His skill points only go to him. Each upgrade adds one point; costs rise with the rating and stop at his ceiling.'} This season: ${ps.g} goals, ${ps.a} assists, ${ps.d} blocks, ${ps.pts} points played.</p>
+    <div class="career"><b>Career</b> <span>${careerLine(lifeOf(p))}</span><span class="dim">${lifeOf(p).titles} title${lifeOf(p).titles===1?'':'s'}${lifeOf(p).honors.length?' · '+lifeOf(p).honors.map(esc).join(' · '):''} · Hall of Fame: ${Math.min(legacy(lifeOf(p)),HOF_BAR)} / ${HOF_BAR} legacy points</span></div>
     <div class="row between"><div class="row"><button class="btn alt small" data-prev id="pprev">← Prev</button><button class="btn alt small" data-next id="pnext">Next →</button></div><button class="btn" id="pback" ${renaming?'':'data-primary'}>Back to roster</button></div>
   </div></div>`);
   ui.querySelectorAll('[data-up]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.up,c=spCost(p[a]);if((p.sp||0)>=c&&canUpgrade(p,a)){p.sp-=c;p[a]++;saveProgram();SFX.level();showCoachPlayer(p.id)}}));
@@ -2411,6 +2450,9 @@ function coachGameEnd(res){
     const s=res.stats[p.id];if(!s)continue;const pts=(res.pp||{})[p.id]||0;
     const ps=S.pstats[p.id]||(S.pstats[p.id]={g:0,a:0,d:0,pts:0});ps.g+=s.g;ps.a+=s.a;ps.d+=s.d;ps.pts+=pts;
     if(res.forfeit)continue;
+    const L=lifeOf(p);
+    if(pts>0){L.gp++;if(!L.years.includes(CAR.year))L.years.push(CAR.year)}
+    L.pts+=pts;L.g+=s.g;L.a+=s.a;L.d+=s.d;L.ct+=s.ct||0;L.c+=s.c||0;L.to+=s.to||0;L.peak=Math.max(L.peak||0,starsOf(p));
     p.xp=(p.xp||0)+playerXP(s,pts,res.win,ng.kind==='po');p.sp=p.sp||0;let got=0;
     while(p.xp>=XP_PER_SP){p.xp-=XP_PER_SP;p.sp++;got++}
     if(got)earned.push({p,got});
@@ -2449,6 +2491,13 @@ function coachSeasonEnd(){
   if(S.champ===CAR.teamId)aw.push('Pacific Champions');
   if(sortedStandings()[0]===CAR.teamId)aw.push('Best regular-season record');
   if(S.champ===CAR.teamId&&st.gp&&st.w/st.gp>=.8)aw.push('Pacific Coach of the Year');
+  // player honors: Team MVP and Defensive Player of the Year; everyone who played gets the title
+  const ro=myRoster(),ps=id=>S.pstats[id]||{g:0,a:0,d:0,pts:0};
+  const mvp=ro.filter(p=>ps(p.id).pts>0).sort((a,b)=>{const v=q=>ps(q.id).g+ps(q.id).a+1.5*ps(q.id).d;return v(b)-v(a)})[0];
+  const dpy=ro.filter(p=>ps(p.id).d>0).sort((a,b)=>ps(b.id).d-ps(a.id).d)[0];
+  if(mvp){aw.push(`Team MVP: ${pname(mvp)}`);lifeOf(mvp).honors.push(`Team MVP (year ${CAR.year})`)}
+  if(dpy){aw.push(`Defensive Player of the Year: ${pname(dpy)}`);lifeOf(dpy).honors.push(`Defensive Player of the Year (year ${CAR.year})`)}
+  if(S.champ===CAR.teamId)for(const p of ro)if(ps(p.id).pts>0)lifeOf(p).titles++;
   S.awards=aw;CAR.awards=CAR.awards.concat(aw.map(a=>`${a} (year ${CAR.year})`));
   CAR.history.push({year:CAR.year,w:st.w,l:st.l,finish:S.finish,champ:TEAM(S.champ).name});
   // winning raises the program's profile, missing the playoffs lowers it
@@ -2473,7 +2522,13 @@ function genRecruits(){
 function startOffseason(){
   const ro=CAR.rosters[CAR.teamId],grads=ro.filter(p=>p.grade>=12);
   CAR.rosters[CAR.teamId]=ro.filter(p=>p.grade<12);
-  CAR.offseason={grads:grads.map(p=>({name:pname(p),pos:p.pos,stars:starsOf(p)})),recruits:genRecruits(),signed:[],open:14-CAR.rosters[CAR.teamId].length};
+  CAR.alumni=CAR.alumni||[];CAR.hof=CAR.hof||[];
+  for(const p of grads){
+    const L=lifeOf(p),lg=legacy(L),inn=lg>=HOF_BAR&&L.gp>=HOF_MIN_GP;
+    const a={id:p.id,name:pname(p),num:p.num,pos:p.pos,classOf:CAR.year,life:JSON.parse(JSON.stringify(L)),legacy:lg,hof:inn};
+    CAR.alumni.push(a);if(inn)CAR.hof.push(a);
+  }
+  CAR.offseason={grads:grads.map(p=>({name:pname(p),pos:p.pos,stars:starsOf(p),hof:CAR.hof.some(h=>h.id===p.id&&h.classOf===CAR.year)})),recruits:genRecruits(),signed:[],open:14-CAR.rosters[CAR.teamId].length};
   saveProgram();showRecruiting();
 }
 function showRecruiting(){
@@ -2484,6 +2539,7 @@ function showRecruiting(){
   const ceil=p=>p.ceilLo===p.ceilHi?'★'.repeat(p.ceilLo):`${p.ceilLo}–${p.ceilHi}★`;
   show(`<div class="screen"><div class="panel" style="width:calc(var(--u)*860)">
     <div class="row between"><div><div class="eyebrow">Offseason · Recruiting</div><h2>Sign your freshman class</h2></div><span class="ccbadge">${left} CC left</span></div>
+    ${O.grads.some(g=>g.hof)?`<p class="gold">Hall of Fame: ${O.grads.filter(g=>g.hof).map(g=>esc(g.name)).join(' and ')} ${O.grads.filter(g=>g.hof).length>1?'are':'is'} inducted.</p>`:''}
     <p class="dim small">${O.grads.length?`Graduating: ${O.grads.map(g=>`${esc(g.name)} ${'★'.repeat(g.stars)}`).join(', ')}.`:'No seniors graduated.'} You have ${O.open} open roster spot${O.open===1?'':'s'}. Spots you leave open go to walk-ons, who rarely get past 2 stars. Freshmen arrive raw: look at the ceiling.</p>
     <table><thead><tr><th>Prospect</th><th>Pos</th><th>Now</th><th>Ceiling</th><th>Best at</th><th class="n">Cost</th><th></th></tr></thead><tbody>
     ${O.recruits.map(p=>{const on=O.signed.includes(p.id),can=on||(O.signed.length<O.open&&left>=p.cost);
