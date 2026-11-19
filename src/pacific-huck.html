@@ -212,7 +212,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 27 · Nov 19';
+const VERSION='Version 28 · Nov 19';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -1941,6 +1941,17 @@ function drawHUD(){
   const ex=ax+Math.cos(G.wind.ang)*wl,ey=ay+Math.sin(G.wind.ang)*wl*.7;
   ctx.strokeStyle=PAL.sea;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(ax-Math.cos(G.wind.ang)*wl,ay-Math.sin(G.wind.ang)*wl*.7);ctx.lineTo(ex,ey);ctx.stroke();
   rect(ex-3,ey-3,6,6,PAL.sea);
+  // who has it: a name card in the bottom-right corner
+  if(G.holder>=0&&(G.phase==='live'||G.phase==='ready')){
+    const h=G.off[G.holder],b=h.p.base||h.p,x0=W-222,y0=H-74;
+    rect(x0-2,y0-2,214,50,PAL.ink);rect(x0,y0,210,46,PAL.panel);
+    rect(x0+5,y0+5,30,36,G.meCol.j);rect(x0+5,y0+33,30,8,G.meCol.s);
+    text(String(b.num),x0+20,y0+28,12,G.meCol.j==='#ece6d6'?PAL.ink:PAL.chalk,'center',G.meCol.j!=='#ece6d6');
+    const nm=pname(b).toUpperCase();
+    text(nm.length>17?nm.slice(0,16)+'.':nm,x0+44,y0+21,12,PAL.chalk,'left');
+    text(`${POS[b.pos].toUpperCase()} · THR ${b.thr}`,x0+44,y0+37,9,PAL.dim,'left',false);
+    text('★'.repeat(starsOf(b)),x0+204,y0+37,10,PAL.gold,'right',false);
+  }
   // right info
   rect(W-158,8,148,44,PAL.ink);rect(W-156,10,144,40,PAL.panel);
   text(G.rain?'DRIZZLE':G.pnw?'OVERCAST':'GOLDEN HOUR',W-146,26,10,PAL.dim,'left',false);
