@@ -225,7 +225,7 @@ const cvs=document.getElementById('cv'),ctx=cvs.getContext('2d'),ui=document.get
 ctx.imageSmoothingEnabled=false;
 const PAL={night:'#14202e',panel:'#1f3044',panel2:'#2b4560',chalk:'#f3efe2',dim:'#a9b8c6',sunset:'#ff8f3d',sea:'#6fd0c1',gold:'#ffd25a',red:'#ff6b5d',ink:'#0b121a',cone:'#ff7a1a'};
 const FONT='Silkscreen, "Courier New", monospace';
-const VERSION='Version 31 · Nov 19';
+const VERSION='Version 32 · Nov 20';
 
 // ---------------------------------------------------------------- helpers
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -528,9 +528,9 @@ function throwErr(thr,d,type){
 }
 const huckRange=t=>46+t*2.9;
 
-function computeForce(){
+function computeForce(hint){
   const y=G.anchor.y;
-  G.os=Math.abs(y-20)<6?(Math.random()<.5?1:-1):(y<20?-1:1);
+  G.os=Math.abs(y-20)<6?(hint||(Math.random()<.5?1:-1)):(y<20?-1:1);
   G.markAng=Math.atan2(-G.os,.35);
 }
 // Handlers stay back (in Vertical, the dump and swing spots). Everyone else cuts. Roles are set once per
@@ -569,8 +569,11 @@ function slotPos(e){
 }
 function setupPossession(x,y,label){
   G.flight=null;
-  // the game's offense style runs on O-line points; everything else (and the title-screen demo) is Vertical
-  G.style=!G.demo&&G.pointKind==='O'&&STYLES.includes(G.styleChoice)?G.styleChoice:'vert';
+  // their call for the point: person, or (more often in wind and rain) a zone
+  if(G.demo||G.schemePt!==G.pointNo||!G.dScheme){G.schemePt=G.pointNo;G.dScheme=pickScheme()}
+  // against a zone the team runs its zone offense; otherwise the game's style on O-line points, else Vertical
+  G.style=G.dScheme==='zone'?'zoneO':!G.demo&&G.pointKind==='O'&&STYLES.includes(G.styleChoice)?G.styleChoice:'vert';
+  for(const e of G.off){e.cutSide=null;e.stay=null}G.seamT=0;
   const hs=styleRoles(STYLE_HANDLERS[G.style]);
   let h=hs[0]||G.off[0];
   const meEnt=G.off.find(e=>e.isMe);
@@ -587,8 +590,6 @@ function setupPossession(x,y,label){
     if(e===h)continue;
     const[tx,ty]=slotPos(e);e.x=tx+rand(-jit,jit);e.y=ty+rand(-jit,jit);e.vx=e.vy=0;e.state=e.lane==='H'?'handler':'stack';
   }
-  // their call for the point: person, or (more often in wind and rain) a zone
-  if(G.demo||G.schemePt!==G.pointNo||!G.dScheme){G.schemePt=G.pointNo;G.dScheme=pickScheme()}
   for(const d of G.def){d.zr=null;d.juke=null;d.recover=0;d.swCd=0;d.cupSpot=null}
   if(G.dScheme==='zone'){zoneRoles();zoneAssign()}
   for(const d of G.def){
@@ -599,7 +600,7 @@ function setupPossession(x,y,label){
   G.phase='ready';G.readyT=1.0;G.stallT=0;G.markerSet=false;G.settle=0;G.resetCut=false;G.fake=0;G.lean=0;
   G.disc.x=x;G.disc.y=y;G.disc.z=1.1;
   G.camX=clamp(x-16,-4,FL+4-VIEW);
-  if(label)banner(label,G.dScheme==='zone'?"THEY'RE IN A ZONE":'',PAL.sea,G.dScheme==='zone'?1.6:1.0);
+  if(label)banner(label,G.dScheme==='zone'?"THEY'RE IN A ZONE · ZONE O":'',PAL.sea,G.dScheme==='zone'?1.6:1.0);
 }
 
 function nextPoint(){
@@ -876,9 +877,15 @@ function updateOff(e,dt,ph){
       if(e.timer<=0||dist(e.x,e.y,tx,ty)<1)e.state=e.lane==='H'?'handler':'stack';break}
     // stack cutter, in order: a hard jab to sell the other way, explode into the cut, look for it, then get out
     case'jab':steer(e,e.jx,e.jy,1,dt,70,12);e.timer-=dt;
-      if(e.timer<=0||dist(e.x,e.y,e.jx,e.jy)<.45){e.state='scut';e.cutT=0;e.timer=Math.max(e.deep?2.2:1.5,dist(e.x,e.y,e.tx,e.ty)/e.speed+.5);}break;
-    case'scut':steer(e,e.tx,e.ty,1.05,dt,65,8);e.timer-=dt;e.cutT=(e.cutT||0)+dt;
-      if(e.timer<=0||dist(e.x,e.y,e.tx,e.ty)<.8){e.state='linger';e.timer=e.deep?.2:.35}break;
+      if(e.timer<=0||dist(e.x,e.y,e.jx,e.jy)<.45){e.state='scut';e.cutT=0;
+        const path=e.via?dist(e.x,e.y,...e.via)+dist(...e.via,e.tx,e.ty):dist(e.x,e.y,e.tx,e.ty);
+        e.timer=Math.max(e.deep?2.2:1.5,path/e.speed+.5)}break;
+    // the burst: out into his lane first (if he's coming out of the stack), then under or deep along it
+    case'scut':
+      if(e.via){steer(e,e.via[0],e.via[1],1.05,dt,65,20);if(dist(e.x,e.y,e.via[0],e.via[1])<2.2)e.via=null}
+      else steer(e,e.tx,e.ty,1.05,dt,65,8);
+      e.timer-=dt;e.cutT=(e.cutT||0)+dt;
+      if(e.timer<=0||(!e.via&&dist(e.x,e.y,e.tx,e.ty)<.8)){e.via=null;e.state='linger';e.timer=e.deep?.2:e.cutSide==='live'?.5:.35}break;
     case'linger':steer(e,e.tx,e.ty,.3,dt,50,5);e.timer-=dt;if(e.timer<=0)clearOut(e);break;
     case'sclear':e.timer-=dt;
       if(e.wp){steer(e,e.wp[0],e.wp[1],.95,dt,60,8);if(dist(e.x,e.y,e.wp[0],e.wp[1])<1.2)e.wp=null}
@@ -889,7 +896,8 @@ function updateOff(e,dt,ph){
 }
 function hold(e,tx,ty,dt){
   const L=dist(e.x,e.y,tx,ty);
-  if(L>2.5)steer(e,tx,ty,.9,dt,50,6);
+  if(L>8)steer(e,tx,ty,1,dt,55,6);        // well out of position (the disc just went a long way): get there
+  else if(L>2.5)steer(e,tx,ty,.9,dt,50,6);
   else if(L>.5)steer(e,tx,ty,.6,dt,50,6);
   else{const k=Math.exp(-14*dt);e.vx*=k;e.vy*=k}
   if(Math.hypot(e.vx,e.vy)<1)e.face=G.anchor.x>e.x?1:-1;
@@ -921,15 +929,87 @@ function canCut(e){
   if(e.state!=='sclear'||e.wp||e.timer>.8)return false;
   const[x,y]=slotPos(e);return dist(e.x,e.y,x,y)<5;
 }
+// ---- the live side and continuations. There is always a cut on the live side (the open side, where the
+// mark sends the throw): the next live cut starts as soon as the one ahead has made his cut, taken by the
+// man in turn or, if he isn't ready, whoever can get into the live lane soonest. A second rotation fills in
+// around it: break-side cuts and now and then a second man. When the disc goes up, everybody starts setting
+// up for where it will be caught, and a continuation cut is timed to break just as it's caught, so the new
+// thrower has an option right away. After a short swing or dump the thrower sometimes takes off up the live
+// side for the give-and-go.
+function liveMid(){return G.style==='vert'||!G.style?stackY():lerp(20,G.anchor.y,.3)}
+function liveCutOn(){return G.off.some(e=>e.idx!==G.holder&&e.cutSide==='live'&&e.tx>G.anchor.x+3&&(e.state==='jab'||(e.state==='scut'&&!madeCut(e))))} // a handler's swing behind the disc doesn't count
+function liveCut(cont){
+  const st=G.style||'vert',a=G.anchor,os=G.os;
+  const pool=G.stack.map(i=>G.off[i]).filter(e=>e&&e.idx!==G.holder&&!inLane(e)&&e.state!=='chase'&&e.state!=='cut');
+  if(!pool.length)return false;
+  const ready=pool.filter(canCut),goal=[a.x+9,st==='vert'?stackY()+os*10:a.y+os*6];
+  const nearest=()=>pool.slice().sort((p,q)=>dist(p.x,p.y,...goal)-dist(q.x,q.y,...goal))[0];
+  let e=null,type='under';
+  if(st==='vert'){
+    e=ready.length&&!cont?ready[ready.length-1]:nearest(); // the back of the stack; a continuation goes from whoever's closest
+    G.stack.splice(G.stack.indexOf(e.idx),1);G.stack.unshift(e.idx);
+    if(e.x<a.x+6){type='upline';startUplineCut(e)}
+    else{const deep=G.nextDeep;G.nextDeep=!deep;type=deep?'deep':'under';startStackCut(e,deep,'live')}
+  }else{
+    const ord=G.cutOrder;
+    if(!cont)for(let n=0;n<ord.length&&!e;n++){const o=ord[(G.cutPtr+n)%ord.length];e=styleWho(o,'live',ready);if(e){type=o.type;G.cutPtr+=n+1}}
+    if(!e){e=nearest();type=st==='zoneO'?'pop':'under'}
+    if(e.x<a.x+6&&(type==='under'||type==='deep')){type='upline';startUplineCut(e)}
+    else startStyleCut(e,type,'live');
+  }
+  G.activeCut=e.idx;
+  if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:st==='vert'?'live':e.cslot,type,side:'live'});
+  return true;
+}
+// a man level with or behind the disc (after a big gain the whole team is) can't come back under it: his
+// continuation is an up-the-line cut, out to the live side and up the lane so he can be hit in stride
+function startUplineCut(e){
+  const a=G.anchor,os=G.os;
+  e.tx=clamp(a.x+rand(10,16),.5,104);e.ty=clamp(a.y+os*rand(5,9),2,38);
+  e.deep=false;e.state='jab';e.timer=.4;e.cutSide='live';
+  if(!setLane(e))setJab(e,2);
+  jukeCheck(e);
+}
+// while the disc is in the air: the continuation cut goes about a second before it's caught (right away on a
+// short throw), from whoever is closest to the new live lane, so he's breaking into it as the catch is made
+function contLogic(){
+  const f=G.flight;if(!f||f.cont)return;
+  if(liveCutOn()){f.cont=true;return}
+  // time it from how long his cut will take, so he's making it just as (or just after) the disc is caught
+  const a=G.anchor,goal=[a.x+9,(G.style==='vert'?stackY():a.y)+G.os*8];
+  const pool=G.stack.map(i=>G.off[i]).filter(e=>e&&!inLane(e)&&e.state!=='chase'&&e.state!=='cut');
+  if(!pool.length){f.cont=true;return}
+  const e=pool.slice().sort((p,q)=>dist(p.x,p.y,...goal)-dist(q.x,q.y,...goal))[0];
+  const dur=.4+Math.max(10,dist(e.x,e.y,...goal))/e.speed;
+  if(f.T-f.t>dur-.3&&f.T-f.t>.15)return;
+  f.cont=true;liveCut(true);
+}
+function giveGo(h){
+  const a=G.anchor;
+  h.tx=clamp(a.x+rand(7,12),.5,100);h.ty=clamp(a.y+G.os*rand(3,7),2,38);
+  h.deep=false;h.state='jab';h.timer=.25;h.cutSide='live';h.stay=null;h.via=null;
+  setJab(h,1.5);jukeCheck(h);
+  if(G.cutLog)G.cutLog.push({t:G.t,idx:h.idx,slot:'H',type:'give-go',side:'live'});
+}
+// the spot near (x0,y0) that's farthest from the defense and not on top of a teammate: the hole in a zone
+function seam(x0,y0,R,step,self){
+  let best=[clamp(x0,.5,107.5),clamp(y0,1.5,38.5)],bv=-1e9;
+  for(let dx=-R;dx<=R+1e-6;dx+=step)for(let dy=-R;dy<=R+1e-6;dy+=step){
+    const x=clamp(x0+dx,.5,107.5),y=clamp(y0+dy,1.5,38.5);
+    let m=9;for(const d of G.def)m=Math.min(m,dist(x,y,d.x,d.y));
+    let crowd=0;for(const o of G.off)if(o!==self&&dist(x,y,o.x,o.y)<3)crowd+=1.5;
+    const v=m-crowd-.22*Math.hypot(dx,dy);
+    if(v>bv){bv=v;best=[x,y]}
+  }
+  return best;
+}
 function stackLogic(dt){
   if(G.style==='horiz')swingLogic(dt);
+  if(G.style==='zoneO'){G.seamT=(G.seamT||0)-dt;if(G.seamT<=0){G.seamT=.5;G.spots=styleSetup('zoneO')}} // keep finding the holes
   const lane=G.off.filter(e=>e.lane==='C'&&inLane(e));
+  if(!liveCutOn()&&lane.length<2&&liveCut())return; // always a cut on the live side
   if(lane.length>=2)return;
-  if(lane.some(cutting)){
-    const act=G.activeCut>=0?G.off[G.activeCut]:null;
-    if(act&&act.idx!==G.holder&&!madeCut(act)&&!G.double)return; // he hasn't made his cut yet
-    G.cutGap-=dt;if(G.cutGap>0)return;
-  }
+  G.cutGap-=dt;if(G.cutGap>0||!liveCutOn())return;  // the second man goes alongside a live cut
   styleCuts(dt);
 }
 // Make it a real cut: long enough to reach full speed and pull away from his defender. Under cuts come
@@ -955,6 +1035,14 @@ function shapeCut(e,type,sd,tx,ty){
   return[tx,ty];
 }
 // sell it the other way first: a hard step of about two and a half yards away from where he's going
+// a cutter who has to cross into his lane breaks out of the stack first, then runs the lane; his jab sells
+// the other way along the stack (a step deep before an under cut, a step under before a deep one)
+function setLane(e){
+  if(Math.abs(e.ty-e.y)<=4){e.via=null;return false}
+  e.via=[lerp(e.x,e.tx,.25),lerp(e.y,e.ty,.85)];
+  e.jx=clamp(e.x+(e.tx<e.x?2.5:-2.5),.5,108);e.jy=e.y;
+  return true;
+}
 function setJab(e,len){
   const dx=e.tx-e.x,dy=e.ty-e.y,L=Math.hypot(dx,dy)||1;
   e.jx=clamp(e.x-dx/L*len,.5,108);e.jy=clamp(e.y-dy/L*len,1,39);
@@ -963,11 +1051,11 @@ function setJab(e,len){
 // side, G.os) or 'dead'.
 function startStackCut(e,deep,side){
   const a=G.anchor,os=G.os,sd=side==='dead'?-os:os,y0=stackY();
-  e.deep=deep;e.state='jab';e.timer=.45;
+  e.deep=deep;e.state='jab';e.timer=.45;e.cutSide=side==='dead'?'dead':'live';
   if(deep){e.tx=clamp(a.x+rand(25,38),a.x+15,107.5);e.ty=clamp(y0+sd*rand(4,11),2.5,37.5)}
   else{e.tx=clamp(a.x+rand(7,12),.5,100);e.ty=clamp(y0+sd*rand(8,13),1.5,38.5)}
   [e.tx,e.ty]=shapeCut(e,deep?'deep':'under',sd,e.tx,e.ty);
-  setJab(e,2.5);jukeCheck(e);
+  if(!setLane(e))setJab(e,2.5);jukeCheck(e);
 }
 
 // ---------------------------------------------------------------- offense styles
@@ -976,13 +1064,13 @@ function startStackCut(e,deep,side){
 // side (G.os) and "far side" the other, so a 4-1 is a 4-1 whichever side the disc is on. Cuts are always
 // automatic: about 75% go to the live side, and the order and gaps change every point.
 const STYLES=['vert','horiz','41','14'];
-const STYLE_NAME={vert:'Vertical',horiz:'Horizontal','41':'4-1','14':'1-4'};
-const STYLE_HANDLERS={vert:2,horiz:3,'41':2,'14':2};
+const STYLE_NAME={vert:'Vertical',horiz:'Horizontal','41':'4-1','14':'1-4',zoneO:'Zone O'};
+const STYLE_HANDLERS={vert:2,horiz:3,'41':2,'14':2,zoneO:3};
 const STYLE_NOTE={vert:'2 handlers and a 5-man stack. Cuts come from the back, then rejoin at the front.',
   horiz:'3 handlers across the back, 4 cutters across the field. The handlers swing it side to side.',
   '41':'4 cutters on the disc side go in turn. The 1 on the far side is the deep threat.',
   '14':'The 1 on the disc side works under. The 4 on the far side go deep.'};
-const STYLE_KEY='pacific-huck-style',LIVE_SHARE=.75,SKIP_TURN=.15;
+const STYLE_KEY='pacific-huck-style',SECOND_LIVE=.4,SKIP_TURN=.15;
 // coach games keep the style in the program save; quick games keep their own
 function getStyle(kind){
   if(kind==='coach'&&CAR)return STYLES.includes(CAR.style)?CAR.style:'vert';
@@ -1006,6 +1094,14 @@ function styleOrder(){
   for(const e of G.off)e.cslot=-1;
   G.cutOrder=[];G.cutPtr=0;
   if(st==='vert')return;
+  if(st==='zoneO'){
+    // against a zone: two poppers (best hands and throws) work the holes behind the cup, two wings (the rest,
+    // usually the quick ones) stretch the wall down each sideline
+    const pops=cs.slice().sort((a,b)=>(b.p.hnd+b.p.thr)-(a.p.hnd+a.p.thr)).slice(0,2),wings=cs.filter(e=>!pops.includes(e)).sort((a,b)=>a.y-b.y);
+    pops.forEach((e,i)=>e.cslot=i);wings.forEach((e,i)=>e.cslot=2+i);
+    G.cutOrder=[{pick:'popper',type:'pop'},{pick:'wing',type:'seam'}];G.cutPtr=randi(0,1);
+    return;
+  }
   let lone=null;
   if(st==='41')lone=cs.slice().sort((a,b)=>b.p.spd-a.p.spd)[0];                     // fastest man goes deep alone
   if(st==='14')lone=cs.slice().sort((a,b)=>(b.p.spd+b.p.hnd)-(a.p.spd+a.p.hnd))[0];  // best all-round cutter works under alone
@@ -1026,24 +1122,34 @@ function styleOrder(){
 function styleSetup(st){
   const a=G.anchor,os=G.os,S={},cl=(x,y)=>[clamp(x,.5,107.5),clamp(y,1.5,38.5)];
   const hs=G.off.filter(e=>e.idx!==G.holder&&e.lane==='H'),cs=G.off.filter(e=>e.idx!==G.holder&&e.lane==='C');
-  if(st==='horiz'){
+  if(st==='horiz'||st==='zoneO'){
     // handlers spread across the width behind the disc, about 11 yards apart (one on each side when
-    // there's room); if a cutter has the disc, the third handler sets up right behind him
-    const spots=[];
-    for(const o of [11,-11,22,-22]){const y=a.y+o;if(y>=3&&y<=37&&spots.length<2)spots.push(cl(a.x-3,y))}
+    // there's room); if a cutter has the disc, the third handler sets up right behind him. Against a zone
+    // they sit a little tighter, ready for the swing.
+    const spots=[],sp0=st==='zoneO'?10:11,bk=st==='zoneO'?2:3;
+    for(const o of [sp0,-sp0,2*sp0,-2*sp0]){const y=a.y+o;if(y>=3&&y<=37&&spots.length<2)spots.push(cl(a.x-bk,y))}
     if(hs.length>2)spots.push(cl(a.x-5,a.y));
     const byY=hs.slice().sort((p,q)=>p.y-q.y),sp=spots.slice(0,byY.length).sort((p,q)=>p[1]-q[1]);
     byY.forEach((e,i)=>S[e.idx]=sp[i]);
   }else for(const e of hs)S[e.idx]=e.slot===0?cl(a.x-4.5,a.y-os*5):cl(a.x+1,a.y-os*12); // Vertical's dump and swing
   const front=a.x+11,col=(k,n)=>{let sp=3;if(n>1&&front+(n-1)*sp>106)sp=Math.max(1.6,(106-front)/(n-1));return front+k*sp};
+  if(st==='zoneO'){
+    // poppers in the holes behind the cup, one on each side of the disc (whoever's closer takes the live side);
+    // wings wide and deep along each sideline. Each keeps sliding to the gap farthest from the zone.
+    const pops=cs.filter(e=>e.cslot<2),PL=cl(a.x+8,a.y+os*5),PD=cl(a.x+10,a.y-os*6);
+    if(pops.length===2&&dist(pops[0].x,pops[0].y,...PL)+dist(pops[1].x,pops[1].y,...PD)>dist(pops[0].x,pops[0].y,...PD)+dist(pops[1].x,pops[1].y,...PL))pops.reverse();
+    pops.forEach((e,i)=>S[e.idx]=seam(...(i===0?PL:PD),4,1.5,e));
+    for(const e of cs)if(e.cslot>=2)S[e.idx]=seam(...cl(a.x+21,e.cslot===2?7:33),5,2,e);
+  }
   for(const e of cs){
+    if(st==='zoneO')continue;
     const k=e.cslot;
     if(st==='horiz')S[e.idx]=cl(front,[5,15,25,35][k]??20);           // side by side across the field
     else if(st==='41')S[e.idx]=k<4?cl(col(k,4),20+os*9):cl(a.x+16,20-os*12);  // 4 on the disc side, 1 far
     else S[e.idx]=k===0?cl(a.x+12,20+os*10):cl(col(k-1,4),20-os*10);  // 1 on the disc side, 4 far
   }
   // nobody closer than 2 yards to anyone (the holder stays put), cutters 10+ yards upfield, all on the field
-  const P=Object.keys(S).map(k=>({e:G.off[k],s:S[k]})),minX=Math.min(a.x+10,105);
+  const P=Object.keys(S).map(k=>({e:G.off[k],s:S[k]})),minX=Math.min(a.x+(st==='zoneO'?6:10),105);
   const all=P.concat([{e:null,s:[a.x,a.y],fixed:true}]);
   for(let it=0;it<16;it++)for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const A=all[i],B=all[j],dx=B.s[0]-A.s[0],dy=B.s[1]-A.s[1],d=Math.hypot(dx,dy);
@@ -1060,7 +1166,7 @@ function styleCuts(dt){
   const st=G.style||'vert';
   const ready=G.stack.map(i=>G.off[i]).filter(e=>e&&e.idx!==G.holder&&canCut(e));
   if(!ready.length)return;
-  const side=Math.random()<LIVE_SHARE?'live':'dead';
+  const side=Math.random()<SECOND_LIVE?'live':'dead';
   let e=null,type='under',slot=null;
   if(st==='vert'){
     // cuts start from the back of the stack, farthest from the handlers, where there's the most room to
@@ -1084,32 +1190,42 @@ function styleCuts(dt){
     startStyleCut(e,type,side);
   }
   G.activeCut=e.idx;
-  // vary the rhythm: usually a short gap, sometimes a longer beat, sometimes two go close together
-  const r=Math.random();
-  G.double=r<.12;
-  G.cutGap=G.double?rand(.3,.55):r<.27?rand(.4,.8):rand(.05,.3);
+  // the second rotation runs on its own, slower rhythm around the live cuts
+  G.cutGap=rand(1.2,2.8);
   if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:st==='vert'?slot:e.cslot,type,side});
 }
 // Horizontal picks by kind: an edge cutter goes deep down his sideline, a middle cutter comes under.
 // The one on the side the cut goes to takes it; if he isn't back yet, the other one crosses over.
 function styleWho(o,side,ready){
   if(o.c!=null)return ready.find(e=>e.cslot===o.c)||null;
-  const kind=o.pick==='edge'?[0,3]:[1,2],sd=side==='live'?G.os:-G.os;
-  return ready.filter(e=>kind.includes(e.cslot)).sort((p,q)=>sd*(slotPos(q)[1]-20)-sd*(slotPos(p)[1]-20))[0]||null;
+  const kind=o.pick==='edge'?[0,3]:o.pick==='popper'?[0,1]:o.pick==='wing'?[2,3]:[1,2],sd=side==='live'?G.os:-G.os;
+  const ref=o.pick==='popper'?G.anchor.y:20; // poppers: the one on that side of the disc
+  return ready.filter(e=>kind.includes(e.cslot)).sort((p,q)=>sd*(slotPos(q)[1]-ref)-sd*(slotPos(p)[1]-ref))[0]||null;
 }
 function startStyleCut(e,type,side){
   const a=G.anchor,sd=side==='live'?G.os:-G.os,home=slotPos(e);
   let tx,ty;
-  if(type==='under'){tx=a.x+(G.style==='horiz'?rand(4,8):rand(6,11));ty=lerp(20,a.y,.45)+sd*rand(6,11)}
-  else{
-    tx=clamp(a.x+rand(25,36),a.x+15,107.5);
-    const edge=G.style==='horiz'&&Math.sign(home[1]-20)===sd;
-    ty=20+sd*(edge?rand(11,16):rand(5,12));
+  if(type==='pop'||type==='seam'){
+    // zone offense: a popper pops into the hole in front of the thrower, a wing slides into the gap in the wall
+    if(type==='pop'){[tx,ty]=seam(a.x+8,a.y+sd*4,4,1.5,e);tx=Math.max(tx,a.x+4)}
+    else{[tx,ty]=seam(a.x+17,clamp(a.y+sd*10,4,36),5,2,e);tx=Math.max(tx,a.x+10)}
+    const need=type==='pop'?5:8,dx=tx-e.x,dy=ty-e.y,L=Math.hypot(dx,dy);
+    if(L<need&&L>.1){tx=e.x+dx/L*need;ty=e.y+dy/L*need}
+    tx=clamp(tx,a.x+3,104);ty=clamp(ty,2,38);
+  }else{
+    if(type==='under'){tx=a.x+(G.style==='horiz'?rand(4,8):rand(6,11));ty=lerp(20,a.y,.45)+sd*rand(6,11)}
+    else{
+      tx=clamp(a.x+rand(25,36),a.x+15,107.5);
+      const edge=G.style==='horiz'&&Math.sign(home[1]-20)===sd;
+      ty=20+sd*(edge?rand(11,16):rand(5,12));
+    }
+    [tx,ty]=shapeCut(e,type,sd,clamp(tx,.5,type==='under'?100:107.5),clamp(ty,2,38));
   }
-  [tx,ty]=shapeCut(e,type,sd,clamp(tx,.5,type==='under'?100:107.5),clamp(ty,2,38));
-  e.tx=tx;e.ty=ty;e.deep=type==='deep';
+  e.tx=tx;e.ty=ty;e.deep=type==='deep';e.cutSide=side==='dead'?'dead':'live';
   e.state='jab';e.timer=.45;
-  setJab(e,2.5);jukeCheck(e);
+  if(type==='pop'||type==='seam'||!setLane(e))setJab(e,type==='pop'?1.5:2.5);
+  if(type==='pop'||type==='seam')e.via=null;
+  jukeCheck(e);
 }
 // Horizontal: every few seconds the handler farthest from the live side swings across to it
 function swingLogic(dt){
@@ -1120,7 +1236,7 @@ function swingLogic(dt){
   const e=hs[0];
   let side='live',ty=clamp(a.y+os*rand(6,10),1.5,38.5);
   if(Math.abs(ty-a.y)<4){side='dead';ty=clamp(a.y-os*rand(7,11),1.5,38.5)} // no room at the sideline
-  e.tx=clamp(a.x-rand(1,3),.5,107);e.ty=ty;e.deep=false;e.state='jab';e.timer=.25;
+  e.tx=clamp(a.x-rand(1,3),.5,107);e.ty=ty;e.deep=false;e.state='jab';e.timer=.25;e.cutSide=side;e.via=null;
   setJab(e,1.5);jukeCheck(e);
   G.swingT=rand(2.5,4.5);
   if(G.cutLog)G.cutLog.push({t:G.t,idx:e.idx,slot:'H',type:'swing',side});
@@ -1139,7 +1255,7 @@ function styleDiagram(st){
 function showStylePicker(el,kind,mode){
   if(!el)return;
   const cur=getStyle(kind);
-  if(mode==='ro'){el.innerHTML=`<div class="stylepick ro"><div class="sbtn on">${styleDiagram(cur)}<b>${STYLE_NAME[cur]}</b></div><div><div class="eyebrow">Offense style</div><div class="dim small">${STYLE_NOTE[cur]} Used on O-line points. Change it from the hub.</div></div></div>`;return}
+  if(mode==='ro'){el.innerHTML=`<div class="stylepick ro"><div class="sbtn on">${styleDiagram(cur)}<b>${STYLE_NAME[cur]}</b></div><div><div class="eyebrow">Offense style</div><div class="dim small">${STYLE_NOTE[cur]} Used on O-line points (against a zone, your team runs zone offense). Change it from the hub.</div></div></div>`;return}
   el.innerHTML=`<div class="stylepick ${mode||''}"><div class="row between"><span class="eyebrow">Offense style</span>${mode==='compact'?'':`<span class="dim small">${STYLE_NOTE[cur]}</span>`}</div>
     <div class="sgrid">${STYLES.map(v=>`<button class="sbtn ${v===cur?'on':''}" data-style="${v}" aria-pressed="${v===cur}" title="${STYLE_NAME[v]}: ${STYLE_NOTE[v]}">${styleDiagram(v)}<b>${STYLE_NAME[v]}</b></button>`).join('')}</div></div>`;
   el.querySelectorAll('[data-style]').forEach(b=>b.addEventListener('click',()=>{
@@ -1155,7 +1271,7 @@ function showStylePicker(el,kind,mode){
 // deep cutter turns and comes back up the break side.
 function clearOut(e){
   e.state='sclear';e.timer=1.6;
-  if(G.spots||e.lane==='H'){e.wp=null;return} // other styles (and handlers): straight back to his own spot
+  if(G.spots||e.lane==='H'||(e.cutSide==='live'&&!e.deep)){e.wp=null;return} // other styles, handlers and live-side unders: straight back to his spot
   const front=stackSpot(0,Math.max(1,G.stack.length))[0];
   e.wp=[clamp(e.deep?e.x-3:Math.max(front-1,e.x+2),1,107),clamp(stackY()-G.os*6,2,38)];
 }
@@ -1342,6 +1458,13 @@ function throwDisc(type,ax,ay,ai){
     if(dd.state==='chase'||dd.idx===thrower||dist(dd.x,dd.y,tx,ty)>8)continue;
     dd.state='chase';dd.help=true;dd.tx=tx;dd.ty=ty;dd.chaseDelay=.15;
   }
+  // the offense starts setting up for where it's going to be caught while it's in the air (the defense keeps
+  // guarding off the real disc until the catch, apart from whoever is chasing the throw)
+  const pa={x:clamp(rcv?rcv.tx:tx,0,FL),y:clamp(rcv?rcv.ty:ty,0,FW)},sv=[G.anchor,G.os,G.markAng];
+  G.anchor=pa;computeForce();
+  G.flight.pa=pa;G.flight.nos=G.os;G.flight.px=pa.x;G.flight.py=pa.y;
+  if(G.style&&G.style!=='vert')G.spots=styleSetup(G.style);
+  [G.anchor,G.os,G.markAng]=sv;
   G.def[thrower].state='guard';
   return true;
 }
@@ -1424,9 +1547,17 @@ function doCatch(e,f,label){
   G.holder=e.idx;e.state='holder';e.vx*=.35;e.vy*=.35;
   G.anchor={x:e.x,y:e.y};
   G.phase='live';G.settle=.28;G.stallT=0;G.markerSet=false;G.resetCut=false;G.fake=0;
-  computeForce();assignSlots();
-  for(const o of G.off)if(o!==e&&(o.state==='jab'||o.state==='scut'||o.state==='linger'))clearOut(o);
-  G.activeCut=-1;G.cutGap=rand(.3,.6);G.double=false;
+  computeForce(f.px!=null&&dist(e.x,e.y,f.px,f.py)<6?f.nos:0);assignSlots();
+  // cuts still headed somewhere useful for the new thrower carry on (the continuation); the rest clear out
+  const mid=liveMid();
+  for(const o of G.off){
+    if(o===e||!(o.state==='jab'||o.state==='scut'||o.state==='linger'))continue;
+    if(o.tx>G.anchor.x+4&&dist(o.tx,o.ty,G.anchor.x,G.anchor.y)>5){o.cutSide=(o.ty-mid)*G.os>0?'live':'dead';continue}
+    clearOut(o);
+  }
+  G.activeCut=-1;G.cutGap=rand(.8,1.6);G.double=false;
+  // give-and-go: after a short swing or dump the thrower sometimes takes off up the live side for the return
+  if(thrEnt!==e&&thrEnt.lane==='H'&&dist(e.x,e.y,f.fx,f.fy)<18&&e.x-f.fx<9&&Math.random()<.35)giveGo(thrEnt);
   for(const d of G.def)d.state=d.idx===e.idx?'mark':'guard';
 }
 function goal(e,thrEnt){
@@ -1506,8 +1637,12 @@ function update(dt){
   if(ph==='ready'||ph==='live'||ph==='flight'||ph==='dead'){
     for(const o of G.off){o.hist.push([G.t,o.x,o.y]);while(o.hist.length>2&&o.hist[0][0]<G.t-1.2)o.hist.shift()}
     if(ph==='live')liveLogic(dt);
+    // in the air: the offense moves (and times its continuation) for where the disc is going to be caught
+    const pf=G.phase==='flight'&&G.flight&&G.flight.pa,sv=pf?[G.anchor,G.os]:null;
+    if(pf){G.anchor=G.flight.pa;G.os=G.flight.nos;contLogic()}
     if((ph==='live'||ph==='ready')&&G.holder>=0){if(G.dScheme==='zone')zoneAssign();else if(ph==='live')switchLogic(dt)}
     for(const o of G.off)updateOff(o,dt,G.phase);
+    if(pf)[G.anchor,G.os]=sv;
     for(const d of G.def)updateDef(d,dt,G.phase);
     for(const e of G.off)integrate(e,dt);
     for(const e of G.def)integrate(e,dt);
@@ -2084,6 +2219,7 @@ function showHow(back){
         <li>Lose the disc and your line plays defense. Call Person or Zone and watch it play out. Games go to 7.</li>
         <li>Rosters have 14 players. Before every point you pick seven: an O-line when you receive, a D-line when you pull. Players who stay on tire and slow down, so rotate.</li>
         <li>Subs only happen between points, unless someone gets hurt on a layout or a sky battle.</li>
+        <li>Your team always has someone cutting on the live side (where the mark sends the throw). When you throw, everybody starts setting up for where it'll be caught, and the next cut is timed to break just as it's caught; after a short swing or dump, the thrower sometimes takes off for the give-and-go. Against a zone your team switches to zone offense: three handlers spread for swings, two poppers in the holes behind the cup and two wings stretching the wall, all sliding to the gaps.</li>
         <li>Their defense mostly plays person D: each defender sets up on the force side of his man and a step deep, gives more cushion the farther his man is from the disc, and reads cuts a beat late. Quick cutters can juke weak defenders; a strong defender stays locked on. When a cutter breaks free, a teammate nearby may switch onto him. In wind and rain they're more likely to play a 3-3-1 zone (the stall box says ZONE): a cup of three around the thrower, a wall of three behind it and a deep. Swing it around the cup or throw over it.</li>
         <li>Pick an offense style before the game: Vertical, Horizontal, 4-1 or 1-4. Head coach mode sets it in the hub; quick games set it on the pre-game screen. It runs on your O-line points.</li>
       </ul>
